@@ -31,7 +31,7 @@ public class Advertisement {
 	public static final Pattern RETURN = Pattern.compile("\n");
 
 	public static Graph<Object, Object> loadGraph(JavaSparkContext javaSparkContext) {
-		Graph<Object, Object> graph = GraphLoader.edgeListFile(javaSparkContext.sc(), "src/main/resources/grafo.txt",
+		Graph<Object, Object> graph = GraphLoader.edgeListFile(javaSparkContext.sc(), "src/main/resources/grafo-orientato.txt",
 				false, 1, StorageLevel.MEMORY_AND_DISK_SER(), StorageLevel.MEMORY_AND_DISK_SER());
 		// .partitionBy(PartitionStrategy.RandomVertexCut$.MODULE$);
 		return graph;
@@ -82,7 +82,7 @@ public class Advertisement {
 		JavaSparkContext javaSparkContext = new JavaSparkContext(conf);
 
 		Graph<Object, Object> graph = loadGraph(javaSparkContext);
-		stampaNodiAdiacenti(graph, 4l);
+		stampaNodiAdiacenti(graph, graph.graphToGraphOps(graph, graph.vertices().vdTag(), graph.vertices().vdTag()).pickRandomVertex());
 		javaSparkContext.close();
 	}
 }
