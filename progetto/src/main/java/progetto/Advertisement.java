@@ -31,7 +31,7 @@ public class Advertisement {
 
 	public static Graph<Object, Object> loadGraph(JavaSparkContext javaSparkContext) {
 		Graph<Object, Object> graph = GraphLoader.edgeListFile(javaSparkContext.sc(), "src/main/resources/grafo2.txt",
-				true, 1, StorageLevel.MEMORY_AND_DISK_SER(), StorageLevel.MEMORY_AND_DISK_SER());
+				false, 1, StorageLevel.MEMORY_AND_DISK_SER(), StorageLevel.MEMORY_AND_DISK_SER());
 		// .partitionBy(PartitionStrategy.RandomVertexCut$.MODULE$);
 		/*
 		 * EdgeRDD<Object> edge = graph.edges();
@@ -64,31 +64,28 @@ public class Advertisement {
 			}
 		});
 	}
-	
-	public static void stampaNodiVicini(Graph<Object, Object> graph, int id) {
-		GraphOps<Object, Object> graphOps = graph.graphToGraphOps(graph, graph.vertices().vdTag(), graph.vertices().vdTag());
-		VertexRDD<Edge<Object>[]> vicini = graphOps.collectEdges(EdgeDirection.Either());
-		VertexRDD<long[]> vicini2 = graphOps.collectNeighborIds(EdgeDirection.Out());
-//		vicini.toJavaRDD().foreach(new VoidFunction<Tuple2<Object,Edge<Object>[]>>() {
-//
-//			@Override
-//			public void call(Tuple2<Object, Edge<Object>[]> t) throws Exception {
-//				System.out.println(t._1());
-//				for(int i=0; i<t._2().length; i++) {
-//					System.out.println(i+" "+t._2()[i].toString());
-//				}
-//			}
-//		});
-		vicini2.toJavaRDD().foreach(new VoidFunction<Tuple2<Object,long[]>>(){
 
+	public static void stampaNodiVicini(Graph<Object, Object> graph, Long id) {
+		GraphOps<Object, Object> graphOps = graph.graphToGraphOps(graph, graph.vertices().vdTag(),
+				graph.vertices().vdTag());
+		VertexRDD<Edge<Object>[]> vicini = graphOps.collectEdges(EdgeDirection.Either());
+		//vicini.filter(Function1<Tuple2<Object,Edge<Object>[]>,Object> f-> {	} );
+//		Edge<Object>[] edges = vicini.toJavaRDD().collect().get(id)._2();
+//		System.out.println("*"+id+"*");
+//		for (int i = 0; i < edges.length; i++) {
+//			System.out.println(edges[i].toString());
+//		}
+		vicini.toJavaRDD().foreach(new VoidFunction<Tuple2<Object, Edge<Object>[]>>() {
 			@Override
-			public void call(Tuple2<Object, long[]> t) throws Exception {
+			public void call(Tuple2<Object, Edge<Object>[]> t) throws Exception {
+				//if ((Long) t._1() == id)
 				System.out.println(t._1());
-				for(int i=0; i<t._2().length; i++) {
-					System.out.println(i+" "+t._2()[i]);
-				}				
-			}});
-		
+					for (int i = 0; i < t._2().length; i++) {
+						System.out.println(t._2()[i].toString());
+					}
+			}
+		});
+
 	}
 
 	public static void main(String[] args) {
@@ -99,7 +96,7 @@ public class Advertisement {
 		JavaSparkContext javaSparkContext = new JavaSparkContext(conf);
 
 		Graph<Object, Object> graph = loadGraph(javaSparkContext);
-		stampaNodiVicini(graph, 1);
+		stampaNodiVicini(graph, 0l);
 		javaSparkContext.close();
 	}
 }
