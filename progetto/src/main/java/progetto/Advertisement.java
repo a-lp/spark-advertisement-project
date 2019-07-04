@@ -31,9 +31,12 @@ import scala.Tuple2;
 public class Advertisement {
 	public static final Pattern SPACE = Pattern.compile(" ");
 	public static final Pattern RETURN = Pattern.compile("\n");
+	public static Map<Long, Double> mappaAffinita;
+	public static JavaSparkContext jsc;
+	public static Graph<Object, Object> grafo;
 
-	public static Graph<Object, Object> loadGraph(JavaSparkContext javaSparkContext, String path) {
-		Graph<Object, Object> graph = GraphLoader.edgeListFile(javaSparkContext.sc(), path, false, 1,
+	public static Graph<Object, Object> loadGraph(String path) {
+		Graph<Object, Object> graph = GraphLoader.edgeListFile(jsc.sc(), path, false, 1,
 				StorageLevel.MEMORY_AND_DISK_SER(), StorageLevel.MEMORY_AND_DISK_SER());
 		// .partitionBy(PartitionStrategy.RandomVertexCut$.MODULE$);
 		return graph;
@@ -112,14 +115,6 @@ public class Advertisement {
 			System.out.println("Errore apertura file");
 			e.printStackTrace();
 		}
-	}
-
-	public static double calcolaCentralita(Graph<Object, Object> graph, Long id, JavaSparkContext jsc) {
-		/*
-		 * Ricavo i nodi adiacenti tramite gli archi uscenti dal nodo passato a
-		 * parametro
-		 */
-		Edge<Object>[] vicini = nodiAdiacenti(graph, id);
 		/*
 		 * Leggo le affinita registrate su file
 		 */
@@ -128,25 +123,31 @@ public class Advertisement {
 		 * Assegno le affinita ad ogni vertice, quindi mi ricavo una Map per accedere
 		 * direttamente a questi valori
 		 */
-		Map<Long, Double> mapPair = affinita.mapToPair(s -> {
+		mappaAffinita = affinita.mapToPair(s -> {
 			Long id_vertex = Long.parseLong(s.split(" ")[0]);
 			Double value = Double.parseDouble(s.split(" ")[1]);
 
 			return new Tuple2(id_vertex, value);
 		}).collectAsMap();
+	}
+
+	public static double calcolaCentralita(Graph<Object, Object> graph, Long id) {
+		/*
+		 * Ricavo i nodi adiacenti tramite gli archi uscenti dal nodo passato a
+		 * parametro
+		 */
+		Edge<Object>[] vicini = nodiAdiacenti(graph, id);
+
 		Accumulator<Double> p = jsc.accumulator(0.0);
 
 		/*
-		 * Per ogni vertice adiacente al nodo, sommo i valori di affinita
+		 * Per ogni vertice adiacente al nodo, sommo i valori di affinita. L'accumulator
+		 * mi permette di lavorare in parallelo.
 		 */
 		jsc.parallelize(Arrays.asList(vicini)).foreach(f -> {
 			Long id_vicino = ((Long) f.dstId()).equals(id) ? f.srcId() : f.dstId();
-			p.add(mapPair.get(id_vicino));
+			p.add(mappaAffinita.get(id_vicino));
 		});
-//		for (Edge<Object> edge : vicini) {
-//			Long id_vicino = ((Long) edge.dstId()).equals(id) ? edge.srcId() : edge.dstId();
-//			parziale += mapPair.get(id_vicino);
-//		}
 		/*
 		 * Restituisco il valore di centralita' ottenuto dalla divisione tra (affinita
 		 * dei vicini)^2 / (numero di vicini)^2
@@ -156,19 +157,16 @@ public class Advertisement {
 
 	public static void main(String[] args) {
 		System.setProperty("hadoop.home.dir", "C:\\Hadoop");
-		SparkConf conf = new SparkConf().setAppName("Advertisement").setMaster("local[4]"); // local[2] lancia //
-																							// l'applicazione con 2
-																							// threads
-		JavaSparkContext jsc = new JavaSparkContext(conf);
-		Graph<Object, Object> graph = loadGraph(jsc, "src/main/resources/grafo-grande.txt");
-		long numVertici = graph.graphToGraphOps(graph, graph.vertices().vdTag(), graph.vertices().vdTag())
+		SparkConf conf = new SparkConf().setAppName("Advertisement").setMaster("local[4]");
+		jsc = new JavaSparkContext(conf);
+		grafo = loadGraph("src/main/resources/grafo-grande.txt");
+		long numVertici = grafo.graphToGraphOps(grafo, grafo.vertices().vdTag(), grafo.vertices().vdTag())
 				.numVertices();
 		// stampaNodiAdiacenti(graph, graph.graphToGraphOps(graph,
 		// graph.vertices().vdTag(), graph.vertices().vdTag()).pickRandomVertex());
 		creaAffinita(numVertici);
-		System.out.println("Valore di centralita: " + calcolaCentralita(graph,
-				graph.graphToGraphOps(graph, graph.vertices().vdTag(), graph.vertices().vdTag()).pickRandomVertex(),
-				jsc));
+		System.out.println("Valore di centralita: " + calcolaCentralita(grafo,
+				grafo.graphToGraphOps(grafo, grafo.vertices().vdTag(), grafo.vertices().vdTag()).pickRandomVertex()));
 		jsc.close();
 	}
 }
