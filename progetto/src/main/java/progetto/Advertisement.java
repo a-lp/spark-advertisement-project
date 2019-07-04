@@ -36,15 +36,15 @@ public class Advertisement {
 	public static Graph<Object, Object> grafo;
 
 	public static Graph<Object, Object> loadGraph(String path) {
-		Graph<Object, Object> graph = GraphLoader.edgeListFile(jsc.sc(), path, false, 1,
+		Graph<Object, Object> grafo = GraphLoader.edgeListFile(jsc.sc(), path, false, 1,
 				StorageLevel.MEMORY_AND_DISK_SER(), StorageLevel.MEMORY_AND_DISK_SER());
 		// .partitionBy(PartitionStrategy.RandomVertexCut$.MODULE$);
-		return graph;
+		return grafo;
 	}
 
-	public static void contaComponentiConnesse(Graph<Object, Object> graph) {
-		Graph<Object, Object> triCounts = ConnectedComponents.run(graph, graph.vertices().vdTag(),
-				graph.vertices().vdTag());
+	public static void contaComponentiConnesse() {
+		Graph<Object, Object> triCounts = ConnectedComponents.run(grafo, grafo.vertices().vdTag(),
+				grafo.vertices().vdTag());
 		JavaPairRDD<Long, Long> cc = triCounts.vertices().toJavaRDD()
 				.mapToPair(new PairFunction<Tuple2<Object, Object>, Long, Long>() {
 					public Tuple2<Long, Long> call(Tuple2<Object, Object> arg0) throws Exception {
@@ -54,8 +54,8 @@ public class Advertisement {
 		System.out.println(cc.values().distinct().count());
 	}
 
-	public static void stampaNodiGrafo(Graph<Object, Object> graph) {
-		graph.vertices().toJavaRDD().foreach(new VoidFunction<Tuple2<Object, Object>>() {
+	public static void stampaNodiGrafo() {
+		grafo.vertices().toJavaRDD().foreach(new VoidFunction<Tuple2<Object, Object>>() {
 			@Override
 			public void call(Tuple2<Object, Object> t) throws Exception {
 				System.out.println(t._1());
@@ -67,37 +67,27 @@ public class Advertisement {
 	 * Funzione di utilità per la stampa dei nodi adiacenti ad un vertice passato a
 	 * parametro
 	 * 
-	 * @param graph Grafo
+	 * @param grafo Grafo
 	 * @param id    Vertice su cui stampare i nodi adiacenti
 	 */
-	public static void stampaNodiAdiacenti(Graph<Object, Object> graph, Long id) {
-		for (Edge<Object> edge : nodiAdiacenti(graph, id)) {
+	public static void stampaNodiAdiacenti(Long id) {
+		for (Edge<Object> edge : nodiAdiacenti(id)) {
 			System.out.println(edge.srcId() + " - " + edge.dstId());
 		}
-		/*
-		 * nodiAdiacenti(graph, id).foreach(new VoidFunction<Tuple2<Object,
-		 * Edge<Object>[]>>() {
-		 * 
-		 * @Override public void call(Tuple2<Object, Edge<Object>[]> t) throws Exception
-		 * { System.out.println("\t*" + t._1() + "*"); for (int i = 0; i <
-		 * t._2().length; i++) { System.out.println(t._2()[i].srcId() + " - " +
-		 * t._2()[i].dstId()); } } });
-		 */
-
 	}
 
 	/**
 	 * Restituisce un array contenente gli archi uscenti dal nodo con id passato a
 	 * parametro
 	 * 
-	 * @param graph Grafo su cui ricercare gli archi adiacenti del nodo
+	 * @param grafo Grafo su cui ricercare gli archi adiacenti del nodo
 	 * @param id    Nodo su cui ricavare i vertici adiacenti
 	 * @return Array contenente gli archi uscenti dal nodo con id passato a
 	 *         parametro
 	 */
-	public static Edge<Object>[] nodiAdiacenti(Graph<Object, Object> graph, Long id) {
-		GraphOps<Object, Object> graphOps = graph.graphToGraphOps(graph, graph.vertices().vdTag(),
-				graph.vertices().vdTag());
+	public static Edge<Object>[] nodiAdiacenti(Long id) {
+		GraphOps<Object, Object> graphOps = grafo.graphToGraphOps(grafo, grafo.vertices().vdTag(),
+				grafo.vertices().vdTag());
 		VertexRDD<Edge<Object>[]> vicini = graphOps.collectEdges(EdgeDirection.Either());
 		return vicini.toJavaRDD().filter(f -> f._1().equals(id)).first()._2();
 	}
@@ -131,12 +121,12 @@ public class Advertisement {
 		}).collectAsMap();
 	}
 
-	public static double calcolaCentralita(Graph<Object, Object> graph, Long id) {
+	public static double calcolaCentralita(Long id) {
 		/*
 		 * Ricavo i nodi adiacenti tramite gli archi uscenti dal nodo passato a
 		 * parametro
 		 */
-		Edge<Object>[] vicini = nodiAdiacenti(graph, id);
+		Edge<Object>[] vicini = nodiAdiacenti(id);
 
 		Accumulator<Double> p = jsc.accumulator(0.0);
 
@@ -155,18 +145,25 @@ public class Advertisement {
 		return (p.value() * p.value()) / (vicini.length * vicini.length);
 	}
 
+	public static double calcolaUtilita(Long id, Double alpha) {
+		return alpha * mappaAffinita.get(id) + (1 - alpha) * calcolaCentralita(id);
+	}
+
 	public static void main(String[] args) {
 		System.setProperty("hadoop.home.dir", "C:\\Hadoop");
-		SparkConf conf = new SparkConf().setAppName("Advertisement").setMaster("local[4]");
+		SparkConf conf = new SparkConf().setAppName("Advertisement").setMaster("local[1]");
 		jsc = new JavaSparkContext(conf);
-		grafo = loadGraph("src/main/resources/grafo-grande.txt");
+		grafo = loadGraph("src/main/resources/grafo-piccolo.txt");
 		long numVertici = grafo.graphToGraphOps(grafo, grafo.vertices().vdTag(), grafo.vertices().vdTag())
 				.numVertices();
-		// stampaNodiAdiacenti(graph, graph.graphToGraphOps(graph,
-		// graph.vertices().vdTag(), graph.vertices().vdTag()).pickRandomVertex());
+		// stampaNodiAdiacenti(grafo.graphToGraphOps(grafo.vertices().vdTag(),
+		// grafo.vertices().vdTag()).pickRandomVertex());
 		creaAffinita(numVertici);
-		System.out.println("Valore di centralita: " + calcolaCentralita(grafo,
-				grafo.graphToGraphOps(grafo, grafo.vertices().vdTag(), grafo.vertices().vdTag()).pickRandomVertex()));
+		System.out.println("ID\tAffinita\tCentralita\tUtilita");
+		for (long i = 0; i < numVertici; i++) {
+			System.out.println(
+					i + "\t" + mappaAffinita.get(i) + "\t" + calcolaCentralita(i) + "\t" + calcolaUtilita(i, 0.5));
+		}
 		jsc.close();
 	}
 }
