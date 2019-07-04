@@ -36,7 +36,7 @@ public class Advertisement {
 
 	public static Graph<Object, Object> loadGraph(JavaSparkContext javaSparkContext) {
 		Graph<Object, Object> graph = GraphLoader.edgeListFile(javaSparkContext.sc(),
-				"src/main/resources/grafo-orientato.txt", false, 1, StorageLevel.MEMORY_AND_DISK_SER(),
+				"src/main/resources/grafo-piccolo.txt", false, 1, StorageLevel.MEMORY_AND_DISK_SER(),
 				StorageLevel.MEMORY_AND_DISK_SER());
 		// .partitionBy(PartitionStrategy.RandomVertexCut$.MODULE$);
 		return graph;
@@ -105,14 +105,19 @@ public class Advertisement {
 		try {
 			fw = new FileWriter("src/main/resources/affinita.txt", false);
 			for (long i = 0; i < numVertici; i++) {
-				fw.write(i + " " + random.nextDouble()+"\n");
+				fw.write(random.nextDouble()+"\n");
 			}
 			fw.close();
 		} catch (IOException e) {
 			System.out.println("Errore apertura file");
 			e.printStackTrace();
 		}
-	 
+	}
+	
+	
+	public static double calcolaCentralita(Graph<Object, Object> graph, Long id) {
+		JavaRDD<Tuple2<Object, Edge<Object>[]>> vicini = nodiAdiacenti(graph, id);
+		return 0;
 	}
 
 	public static void main(String[] args) {
