@@ -184,10 +184,10 @@ public class Advertisement {
 
 	public static void main(String[] args) {
 		System.setProperty("hadoop.home.dir", "C:\\Hadoop");
-		SparkConf conf = new SparkConf().setAppName("Advertisement").setMaster("local[8]");
+		SparkConf conf = new SparkConf().setAppName("Advertisement").setMaster("local[*]");
 		jsc = new JavaSparkContext(conf);
 
-		grafo = loadGraph("src/main/resources/grafo-grande.txt");
+		grafo = loadGraph("src/main/resources/grafo-medio.txt");
 		stampaKMigliori(10);
 		jsc.close();
 	}
