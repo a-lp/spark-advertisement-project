@@ -46,7 +46,7 @@ public class Advertisement {
 		Graph<Object, Object> grafo = GraphLoader.edgeListFile(jsc.sc(), path, false, 1,
 				StorageLevel.MEMORY_AND_DISK_SER(), StorageLevel.MEMORY_AND_DISK_SER());
 		// .partitionBy(PartitionStrategy.RandomVertexCut$.MODULE$);
-		GraphOps<Object, Object> graphOps = grafo.graphToGraphOps(grafo, grafo.vertices().vdTag(),
+		GraphOps<Object, Object> graphOps = Graph.graphToGraphOps(grafo, grafo.vertices().vdTag(),
 				grafo.vertices().vdTag());
 		// TODO: trasformarlo in Map-Reduce
 		graphOps.collectEdges(EdgeDirection.Either()).toJavaRDD()
@@ -56,7 +56,7 @@ public class Advertisement {
 						mappaVicini.put((Long) t._1(), t._2());
 					}
 				});
-		//creaAffinita(grafo.vertices()); // TODO: decommentare per ricreare affinita
+		// creaAffinita(grafo.vertices()); // TODO: decommentare per ricreare affinita
 		/*
 		 * Leggo le affinita registrate su file
 		 */
@@ -69,7 +69,7 @@ public class Advertisement {
 			Long id_vertex = Long.parseLong(s.split(" ")[0]);
 			Double value = Double.parseDouble(s.split(" ")[1]);
 
-			return new Tuple2(id_vertex, value);
+			return new Tuple2<Long, Double>(id_vertex, value);
 		}).collectAsMap();
 		return grafo;
 	}
@@ -152,10 +152,8 @@ public class Advertisement {
 
 	public static List<Tuple2<Long, Double>> stampaKMigliori(int k) {
 		System.out.println("Inizio calcolo dei migliori K");
-		long numVertici = grafo.graphToGraphOps(grafo, grafo.vertices().vdTag(), grafo.vertices().vdTag())
-				.numVertices();
 		mappaUtilita = grafo.vertices().toJavaRDD()
-				.mapToPair(s -> new Tuple2(s._1(), calcolaUtilita((Long) s._1(), .5)));
+				.mapToPair(s -> new Tuple2<Long, Double>((Long) s._1(), calcolaUtilita((Long) s._1(), .5)));
 		List<Tuple2<Long, Double>> risultato = new ArrayList<Tuple2<Long, Double>>(mappaUtilita.collect());
 		risultato.sort((Tuple2<Long, Double> o1, Tuple2<Long, Double> o2) -> -Double.compare(o1._2(), o2._2()));
 		if (k > risultato.size())
@@ -196,6 +194,6 @@ public class Advertisement {
 		System.out.println("Primi " + k + " rispetto ad Utilità");
 		System.out.println(risultato);
 		System.out.println("Primi " + k + " rispetto ad Affinità");
-		System.out.println(sortByValue(mappaAffinita));				//TODO: modificare la stampa
+		System.out.println(sortByValue(mappaAffinita)); // TODO: modificare la stampa
 	}
 }
