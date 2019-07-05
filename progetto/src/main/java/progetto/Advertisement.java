@@ -161,7 +161,7 @@ public class Advertisement {
 //			}
 //		});
 		JavaPairRDD<Long, Double> pairs = grafo.vertices().toJavaRDD().mapToPair(s->new Tuple2(s._1(), calcolaUtilita((Long)s._1(), .5)));
-		System.out.println(pairs);
+		System.out.println(pairs.collect());
 		pairs.collect().sort((Tuple2<Long, Double> o1, Tuple2<Long, Double> o2) -> -o2._2.compareTo(o1._2));
 //		grafo.vertices().toJavaRDD().foreach(new VoidFunction<Tuple2<Object,Object>>() {
 //
