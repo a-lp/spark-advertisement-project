@@ -40,7 +40,8 @@ public class Advertisement {
 	public static JavaSparkContext jsc;
 	public static Graph<Object, Object> grafo;
 	public static Map<Long, Double> mappaUtilita = new HashMap<Long, Double>(); // TODO: modifica con PairRDD
-
+	public static FileWriter fw;
+	
 	public static Graph<Object, Object> loadGraph(String path) {
 		Graph<Object, Object> grafo = GraphLoader.edgeListFile(jsc.sc(), path, false, 1,
 				StorageLevel.MEMORY_AND_DISK_SER(), StorageLevel.MEMORY_AND_DISK_SER());
@@ -109,21 +110,11 @@ public class Advertisement {
 	}
 
 	public static void creaAffinita(VertexRDD<Object> vertexRDD) {
-		FileWriter fw;
+		
 		Random random = new Random();
 		try {
 			fw = new FileWriter("src/main/resources/affinita.txt", false);
-			vertexRDD.toJavaRDD().foreach(new VoidFunction<Tuple2<Object,Object>>() {
-
-				@Override
-				public void call(Tuple2<Object, Object> t) throws Exception {
-					fw.write((Long)t._1() + " " + random.nextDouble() + "\n");
-					
-				}
-			});
-//			for (long i = 1; i <=vertexRDD; i++) {
-//				fw.write(i + " " + random.nextDouble() + "\n");
-//			}
+			vertexRDD.toJavaRDD().foreach(f->fw.write((Long)f._1() + " " + random.nextDouble() + "\n"));
 			fw.close();
 		} catch (IOException e) {
 			System.out.println("Errore apertura file");
