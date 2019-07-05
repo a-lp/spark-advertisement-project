@@ -35,7 +35,7 @@ import scala.Tuple2;
 public class Advertisement {
 	public static final Pattern SPACE = Pattern.compile(" ");
 	public static final Pattern RETURN = Pattern.compile("\n");
-	public static JavaPairRDD<Long, Double> mappaAffinita;
+	public static Map<Long, Double> mappaAffinita = new HashMap<Long, Double>();
 	public static Map<Long, Edge<Object>[]> mappaVicini = new HashMap<Long, Edge<Object>[]>();
 	public static JavaSparkContext jsc;
 	public static Graph<Object, Object> grafo;
@@ -56,7 +56,7 @@ public class Advertisement {
 						mappaVicini.put((Long) t._1(), t._2());
 					}
 				});
-		creaAffinita(grafo.vertices()); // TODO: decommentare per ricreare affinita
+		//creaAffinita(grafo.vertices()); // TODO: decommentare per ricreare affinita
 		/*
 		 * Leggo le affinita registrate su file
 		 */
@@ -69,8 +69,8 @@ public class Advertisement {
 			Long id_vertex = Long.parseLong(s.split(" ")[0]);
 			Double value = Double.parseDouble(s.split(" ")[1]);
 
-			return new Tuple2<>(id_vertex, value);
-		});
+			return new Tuple2(id_vertex, value);
+		}).collectAsMap();
 		return grafo;
 	}
 
@@ -137,7 +137,7 @@ public class Advertisement {
 		 */
 		jsc.parallelize(Arrays.asList(vicini)).foreach(f -> {
 			Long id_vicino = ((Long) f.dstId()).equals(id) ? f.srcId() : f.dstId();
-			p.add(mappaAffinita.collectAsMap().get(id_vicino));
+			p.add(mappaAffinita.get(id_vicino));
 		});
 		/*
 		 * Restituisco il valore di centralita' ottenuto dalla divisione tra (affinita
@@ -147,10 +147,10 @@ public class Advertisement {
 	}
 
 	public static double calcolaUtilita(Long id, Double alpha) {
-		return alpha * (mappaAffinita.collectAsMap().get(id)) + (1 - alpha) * calcolaCentralita(id);
+		return alpha * mappaAffinita.get(id) + (1 - alpha) * calcolaCentralita(id);
 	}
 
-	public static void stampaKMigliori(int k) {
+	public static List<Tuple2<Long, Double>> stampaKMigliori(int k) {
 		System.out.println("Inizio calcolo dei migliori K");
 		long numVertici = grafo.graphToGraphOps(grafo, grafo.vertices().vdTag(), grafo.vertices().vdTag())
 				.numVertices();
@@ -160,12 +160,9 @@ public class Advertisement {
 		risultato.sort((Tuple2<Long, Double> o1, Tuple2<Long, Double> o2) -> -Double.compare(o1._2(), o2._2()));
 		if (k > risultato.size())
 			k = risultato.size();
-		System.out.println("Primi " + k + " rispetto ad Utilità");
-		System.out.println(risultato.subList(0, k));
-		System.out.println("Primi " + k + " rispetto ad Affinità");
-		List<Tuple2<Long, Double>> risultatoAffinita = new ArrayList<Tuple2<Long, Double>>(mappaAffinita.collect());
-		risultatoAffinita.sort((Tuple2<Long, Double> o1, Tuple2<Long, Double> o2) -> -Double.compare(o1._2(), o2._2()));
-		System.out.println(risultatoAffinita.subList(0, k));
+
+		return risultato.subList(0, k);
+
 	}
 
 	public static Map<Long, Double> sortByValue(Map<Long, Double> hm) {
@@ -192,8 +189,13 @@ public class Advertisement {
 		SparkConf conf = new SparkConf().setAppName("Advertisement").setMaster("local[*]");
 		jsc = new JavaSparkContext(conf);
 
-		grafo = loadGraph("src/main/resources/grafo-piccolo.txt");
-		stampaKMigliori(10);
+		grafo = loadGraph("src/main/resources/grafo-medio.txt");
+		int k = 10;
+		List<Tuple2<Long, Double>> risultato = stampaKMigliori(k);
 		jsc.close();
+		System.out.println("Primi " + k + " rispetto ad Utilità");
+		System.out.println(risultato);
+		System.out.println("Primi " + k + " rispetto ad Affinità");
+		System.out.println(sortByValue(mappaAffinita));				//TODO: modificare la stampa
 	}
 }
