@@ -35,13 +35,13 @@ import scala.Tuple2;
 public class Advertisement {
 	public static final Pattern SPACE = Pattern.compile(" ");
 	public static final Pattern RETURN = Pattern.compile("\n");
-	public static Map<Long, Double> mappaAffinita = new HashMap<Long, Double>();;
+	public static JavaPairRDD<Long, Double> mappaAffinita;
 	public static Map<Long, Edge<Object>[]> mappaVicini = new HashMap<Long, Edge<Object>[]>();
 	public static JavaSparkContext jsc;
 	public static Graph<Object, Object> grafo;
-	public static Map<Long, Double> mappaUtilita = new HashMap<Long, Double>(); // TODO: modifica con PairRDD
+	public static JavaPairRDD<Long, Double> mappaUtilita;
 	public static FileWriter fw;
-	
+
 	public static Graph<Object, Object> loadGraph(String path) {
 		Graph<Object, Object> grafo = GraphLoader.edgeListFile(jsc.sc(), path, false, 1,
 				StorageLevel.MEMORY_AND_DISK_SER(), StorageLevel.MEMORY_AND_DISK_SER());
@@ -56,7 +56,7 @@ public class Advertisement {
 						mappaVicini.put((Long) t._1(), t._2());
 					}
 				});
-		creaAffinita(grafo.vertices());
+		creaAffinita(grafo.vertices()); // TODO: decommentare per ricreare affinita
 		/*
 		 * Leggo le affinita registrate su file
 		 */
@@ -69,8 +69,8 @@ public class Advertisement {
 			Long id_vertex = Long.parseLong(s.split(" ")[0]);
 			Double value = Double.parseDouble(s.split(" ")[1]);
 
-			return new Tuple2(id_vertex, value);
-		}).collectAsMap();
+			return new Tuple2<>(id_vertex, value);
+		});
 		return grafo;
 	}
 
@@ -110,11 +110,11 @@ public class Advertisement {
 	}
 
 	public static void creaAffinita(VertexRDD<Object> vertexRDD) {
-		
+
 		Random random = new Random();
 		try {
 			fw = new FileWriter("src/main/resources/affinita.txt", false);
-			vertexRDD.toJavaRDD().foreach(f->fw.write((Long)f._1() + " " + random.nextDouble() + "\n"));
+			vertexRDD.toJavaRDD().foreach(f -> fw.write((Long) f._1() + " " + random.nextDouble() + "\n"));
 			fw.close();
 		} catch (IOException e) {
 			System.out.println("Errore apertura file");
@@ -137,7 +137,7 @@ public class Advertisement {
 		 */
 		jsc.parallelize(Arrays.asList(vicini)).foreach(f -> {
 			Long id_vicino = ((Long) f.dstId()).equals(id) ? f.srcId() : f.dstId();
-			p.add(mappaAffinita.get(id_vicino));
+			p.add(mappaAffinita.collectAsMap().get(id_vicino));
 		});
 		/*
 		 * Restituisco il valore di centralita' ottenuto dalla divisione tra (affinita
@@ -147,20 +147,25 @@ public class Advertisement {
 	}
 
 	public static double calcolaUtilita(Long id, Double alpha) {
-		return alpha * mappaAffinita.get(id) + (1 - alpha) * calcolaCentralita(id);
+		return alpha * (mappaAffinita.collectAsMap().get(id)) + (1 - alpha) * calcolaCentralita(id);
 	}
 
 	public static void stampaKMigliori(int k) {
 		System.out.println("Inizio calcolo dei migliori K");
 		long numVertici = grafo.graphToGraphOps(grafo, grafo.vertices().vdTag(), grafo.vertices().vdTag())
 				.numVertices();
-		JavaPairRDD<Long, Double> pairs = grafo.vertices().toJavaRDD()
+		mappaUtilita = grafo.vertices().toJavaRDD()
 				.mapToPair(s -> new Tuple2(s._1(), calcolaUtilita((Long) s._1(), .5)));
-		List<Tuple2<Long, Double>> risultato = new ArrayList<Tuple2<Long, Double>>(pairs.collect());
+		List<Tuple2<Long, Double>> risultato = new ArrayList<Tuple2<Long, Double>>(mappaUtilita.collect());
 		risultato.sort((Tuple2<Long, Double> o1, Tuple2<Long, Double> o2) -> -Double.compare(o1._2(), o2._2()));
 		if (k > risultato.size())
 			k = risultato.size();
+		System.out.println("Primi " + k + " rispetto ad Utilità");
 		System.out.println(risultato.subList(0, k));
+		System.out.println("Primi " + k + " rispetto ad Affinità");
+		List<Tuple2<Long, Double>> risultatoAffinita = new ArrayList<Tuple2<Long, Double>>(mappaAffinita.collect());
+		risultatoAffinita.sort((Tuple2<Long, Double> o1, Tuple2<Long, Double> o2) -> -Double.compare(o1._2(), o2._2()));
+		System.out.println(risultatoAffinita.subList(0, k));
 	}
 
 	public static Map<Long, Double> sortByValue(Map<Long, Double> hm) {
@@ -187,7 +192,7 @@ public class Advertisement {
 		SparkConf conf = new SparkConf().setAppName("Advertisement").setMaster("local[*]");
 		jsc = new JavaSparkContext(conf);
 
-		grafo = loadGraph("src/main/resources/grafo-medio.txt");
+		grafo = loadGraph("src/main/resources/grafo-piccolo.txt");
 		stampaKMigliori(10);
 		jsc.close();
 	}
