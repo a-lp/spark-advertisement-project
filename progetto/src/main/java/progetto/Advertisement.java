@@ -46,10 +46,9 @@ public class Advertisement {
 	public static Graph<Object, Object> loadGraph(String path) {
 		Graph<Object, Object> grafo = GraphLoader.edgeListFile(jsc.sc(), path, false, 1,
 				StorageLevel.MEMORY_AND_DISK_SER(), StorageLevel.MEMORY_AND_DISK_SER());
-		// .partitionBy(PartitionStrategy.RandomVertexCut$.MODULE$);
 		GraphOps<Object, Object> graphOps = Graph.graphToGraphOps(grafo, grafo.vertices().vdTag(),
 				grafo.vertices().vdTag());
-		// TODO: trasformarlo in Map-Reduce
+
 		graphOps.collectEdges(EdgeDirection.Either()).toJavaRDD()
 				.foreach(new VoidFunction<Tuple2<Object, Edge<Object>[]>>() {
 					@Override
@@ -57,7 +56,7 @@ public class Advertisement {
 						mappaVicini.put((Long) t._1(), t._2());
 					}
 				});
-		creaAffinita(grafo.vertices()); // TODO: decommentare per ricreare affinita
+		// creaAffinita(grafo.vertices()); // decommentare per ricreare affinita
 		/*
 		 * Leggo le affinita registrate su file
 		 */
@@ -97,7 +96,7 @@ public class Advertisement {
 		}
 	}
 
-	//TODO: refactor
+	// TODO: refactor
 	public static void creaAffinita(VertexRDD<Object> vertexRDD) {
 		Random random = new Random();
 		Set<Long> inseriti = new HashSet<Long>();
@@ -119,7 +118,8 @@ public class Advertisement {
 					vertice2 = ((Long) f.dstId()).equals(vertice1) ? f.srcId() : f.dstId();
 					if (!inseriti.contains(vertice2)) {
 						inseriti.add(vertice2);
-						valore2 = valore1 + ((random.nextBoolean() ? 1 : -1) * (Math.min(1-valore1, 0.2)) * random.nextDouble());
+						valore2 = valore1 + ((random.nextBoolean() ? 1 : -1) * (Math.min(1 - valore1, 0.2))
+								* random.nextDouble());
 						fileText = vertice2 + " " + valore2 + "\n";
 						fw.write(fileText);
 						System.out.println(vertice1 + ")\t" + fileText);
