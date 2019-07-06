@@ -7,11 +7,13 @@ import java.util.Arrays;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
 import java.util.Random;
+import java.util.Set;
 import java.util.concurrent.TimeUnit;
 import java.util.regex.Pattern;
 
@@ -20,16 +22,13 @@ import org.apache.spark.SparkConf;
 import org.apache.spark.api.java.JavaPairRDD;
 import org.apache.spark.api.java.JavaRDD;
 import org.apache.spark.api.java.JavaSparkContext;
-import org.apache.spark.api.java.function.PairFunction;
 import org.apache.spark.api.java.function.VoidFunction;
-import org.apache.spark.deploy.worker.Sleeper;
 import org.apache.spark.graphx.Edge;
 import org.apache.spark.graphx.EdgeDirection;
 import org.apache.spark.graphx.Graph;
 import org.apache.spark.graphx.GraphLoader;
 import org.apache.spark.graphx.GraphOps;
 import org.apache.spark.graphx.VertexRDD;
-import org.apache.spark.graphx.lib.ConnectedComponents;
 import org.apache.spark.storage.StorageLevel;
 
 import scala.Tuple2;
@@ -58,7 +57,7 @@ public class Advertisement {
 						mappaVicini.put((Long) t._1(), t._2());
 					}
 				});
-		// creaAffinita(grafo.vertices()); // TODO: decommentare per ricreare affinita
+		creaAffinita(grafo.vertices()); // TODO: decommentare per ricreare affinita
 		/*
 		 * Leggo le affinita registrate su file
 		 */
@@ -75,8 +74,6 @@ public class Advertisement {
 		}).collectAsMap();
 		return grafo;
 	}
-
-
 
 	public static void stampaNodiGrafo() {
 		grafo.vertices().toJavaRDD().foreach(new VoidFunction<Tuple2<Object, Object>>() {
@@ -102,9 +99,32 @@ public class Advertisement {
 
 	public static void creaAffinita(VertexRDD<Object> vertexRDD) {
 		Random random = new Random();
+		Set<Long> inseriti = new HashSet<Long>();
+		Double valore1, valore2;
+		String fileText;
+		Long vertice1, vertice2;
 		try {
 			fw = new FileWriter("src/main/resources/affinita.txt", false);
-			vertexRDD.toJavaRDD().foreach(f -> fw.write((Long) f._1() + " " + random.nextDouble() + "\n"));
+			for (Tuple2<Object, Object> tupla : vertexRDD.toJavaRDD().collect()) {
+				vertice1 = (Long) tupla._1();
+				valore1 = random.nextDouble();
+				if (!inseriti.contains(vertice1)) {
+					inseriti.add(vertice1);
+					fileText = vertice1 + " " + valore1 + "\n";
+					fw.write(fileText);
+					System.out.println(fileText);
+				}
+				for (Edge<Object> f : mappaVicini.get(vertice1)) {
+					vertice2 = ((Long) f.dstId()).equals(vertice1) ? f.srcId() : f.dstId();
+					if (!inseriti.contains(vertice2)) {
+						inseriti.add(vertice2);
+						valore2 = valore1 + ((random.nextBoolean() ? 1 : -1) * (Math.min(1-valore1, 0.2)) * random.nextDouble());
+						fileText = vertice2 + " " + valore2 + "\n";
+						fw.write(fileText);
+						System.out.println(vertice1 + ")\t" + fileText);
+					}
+				}
+			}
 			fw.close();
 		} catch (IOException e) {
 			System.out.println("Errore apertura file");
@@ -170,7 +190,8 @@ public class Advertisement {
 			temp.put(aa.getKey(), aa.getValue());
 		}
 		List<Tuple2<Long, Double>> risultato = new ArrayList<Tuple2<Long, Double>>();
-		temp.entrySet().forEach(element->risultato.add(new Tuple2<Long,Double>(element.getKey(), element.getValue())));
+		temp.entrySet()
+				.forEach(element -> risultato.add(new Tuple2<Long, Double>(element.getKey(), element.getValue())));
 		return risultato;
 	}
 
@@ -179,13 +200,13 @@ public class Advertisement {
 		SparkConf conf = new SparkConf().setAppName("Advertisement").setMaster("local[*]");
 		jsc = new JavaSparkContext(conf);
 
-		grafo = loadGraph("src/main/resources/grafo-piccolo.txt");
+		grafo = loadGraph("src/main/resources/grafo-medio.txt");
 		int k = 10;
 		List<Tuple2<Long, Double>> risultato = stampaKMigliori(k);
 		jsc.close();
 		try {
 			TimeUnit.SECONDS.sleep(1);
-			for(int i=0; i<3; i++) {
+			for (int i = 0; i < 3; i++) {
 				System.out.print(".");
 				TimeUnit.SECONDS.sleep(1);
 			}
@@ -193,7 +214,8 @@ public class Advertisement {
 			e.printStackTrace();
 		}
 		System.out.println("Primi " + k + " rispetto ad Affinità");
-		System.out.println(sortByValue(mappaAffinita).subList(0, k));
+		System.out
+				.println(sortByValue(mappaAffinita).subList(0, (k > mappaAffinita.size() ? mappaAffinita.size() : k)));
 		System.out.println("Primi " + k + " rispetto ad Utilità");
 		System.out.println(risultato);
 	}
