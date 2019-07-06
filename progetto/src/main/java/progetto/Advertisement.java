@@ -12,6 +12,7 @@ import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
 import java.util.Random;
+import java.util.concurrent.TimeUnit;
 import java.util.regex.Pattern;
 
 import org.apache.spark.Accumulator;
@@ -21,6 +22,7 @@ import org.apache.spark.api.java.JavaRDD;
 import org.apache.spark.api.java.JavaSparkContext;
 import org.apache.spark.api.java.function.PairFunction;
 import org.apache.spark.api.java.function.VoidFunction;
+import org.apache.spark.deploy.worker.Sleeper;
 import org.apache.spark.graphx.Edge;
 import org.apache.spark.graphx.EdgeDirection;
 import org.apache.spark.graphx.Graph;
@@ -163,7 +165,7 @@ public class Advertisement {
 
 	}
 
-	public static Map<Long, Double> sortByValue(Map<Long, Double> hm) {
+	public static List<Tuple2<Long, Double>> sortByValue(Map<Long, Double> hm) {
 		// Create a list from elements of HashMap
 		List<Map.Entry<Long, Double>> list = new LinkedList<Map.Entry<Long, Double>>(hm.entrySet());
 
@@ -179,7 +181,9 @@ public class Advertisement {
 		for (Map.Entry<Long, Double> aa : list) {
 			temp.put(aa.getKey(), aa.getValue());
 		}
-		return temp;
+		List<Tuple2<Long, Double>> risultato = new ArrayList<Tuple2<Long, Double>>();
+		temp.entrySet().forEach(element->risultato.add(new Tuple2<Long,Double>(element.getKey(), element.getValue())));
+		return risultato;
 	}
 
 	public static void main(String[] args) {
@@ -187,13 +191,22 @@ public class Advertisement {
 		SparkConf conf = new SparkConf().setAppName("Advertisement").setMaster("local[*]");
 		jsc = new JavaSparkContext(conf);
 
-		grafo = loadGraph("src/main/resources/grafo-medio.txt");
+		grafo = loadGraph("src/main/resources/grafo-piccolo.txt");
 		int k = 10;
 		List<Tuple2<Long, Double>> risultato = stampaKMigliori(k);
 		jsc.close();
+		try {
+			TimeUnit.SECONDS.sleep(1);
+			for(int i=0; i<3; i++) {
+				System.out.print(".");
+				TimeUnit.SECONDS.sleep(1);
+			}
+		} catch (InterruptedException e) {
+			e.printStackTrace();
+		}
+		System.out.println("Primi " + k + " rispetto ad Affinità");
+		System.out.println(sortByValue(mappaAffinita).subList(0, k));
 		System.out.println("Primi " + k + " rispetto ad Utilità");
 		System.out.println(risultato);
-		System.out.println("Primi " + k + " rispetto ad Affinità");
-		System.out.println(sortByValue(mappaAffinita)); // TODO: modificare la stampa
 	}
 }
