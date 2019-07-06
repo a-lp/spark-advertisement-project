@@ -97,6 +97,7 @@ public class Advertisement {
 		}
 	}
 
+	//TODO: refactor
 	public static void creaAffinita(VertexRDD<Object> vertexRDD) {
 		Random random = new Random();
 		Set<Long> inseriti = new HashSet<Long>();
