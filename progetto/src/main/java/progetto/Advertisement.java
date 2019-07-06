@@ -76,18 +76,7 @@ public class Advertisement {
 		return grafo;
 	}
 
-	// TODO: a che serve?
-	public static void contaComponentiConnesse() {
-		Graph<Object, Object> triCounts = ConnectedComponents.run(grafo, grafo.vertices().vdTag(),
-				grafo.vertices().vdTag());
-		JavaPairRDD<Long, Long> cc = triCounts.vertices().toJavaRDD()
-				.mapToPair(new PairFunction<Tuple2<Object, Object>, Long, Long>() {
-					public Tuple2<Long, Long> call(Tuple2<Object, Object> arg0) throws Exception {
-						return new Tuple2<Long, Long>((Long) arg0._1(), (Long) arg0._2());
-					}
-				});
-		System.out.println(cc.values().distinct().count());
-	}
+
 
 	public static void stampaNodiGrafo() {
 		grafo.vertices().toJavaRDD().foreach(new VoidFunction<Tuple2<Object, Object>>() {
@@ -112,7 +101,6 @@ public class Advertisement {
 	}
 
 	public static void creaAffinita(VertexRDD<Object> vertexRDD) {
-
 		Random random = new Random();
 		try {
 			fw = new FileWriter("src/main/resources/affinita.txt", false);
