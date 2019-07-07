@@ -88,7 +88,7 @@ public class Advertisement {
 		 * le inserisco in una HashMap per potervi accedere in tempo costante.
 		 */
 		System.out.println("Caricamento mappa affinità.");
-		JavaRDD<String> affinitaTesto = jsc.textFile("src/main/resources/affinita.txt");
+		JavaRDD<String> affinitaTesto = jsc.textFile("src/main/resources/affinita-" + mappaFile.get(tipologiaGrafo));
 		mappaAffinita = affinitaTesto.mapToPair(s -> {
 			Long id_vertex = Long.parseLong(s.split(" ")[0]); /* Chiave */
 			Double value = Double.parseDouble(s.split(" ")[1]); /* Valore */
@@ -267,7 +267,7 @@ public class Advertisement {
 		mappaFile.put(2, "grande.txt");
 		mappaFile.put(3, "medio.txt");
 		mappaFile.put(4, "piccolo.txt");
-		tipologiaGrafo = 2;
+		tipologiaGrafo = 1;
 		System.setProperty("hadoop.home.dir", "C:\\Hadoop");
 		SparkConf conf = new SparkConf().setAppName("Advertisement").setMaster("local[*]")
 				.set("spark.driver.cores", "4").set("spark.driver.memory", "4g");
