@@ -169,7 +169,7 @@ public class Advertisement {
 		 * Per ogni vertice adiacente al nodo, sommo i valori di affinita. L'accumulator
 		 * mi permette di lavorare in parallelo.
 		 */
-		jsc.parallelize(Arrays.asList(vicini)).foreach(f -> {
+		Arrays.asList(vicini).forEach(f -> {
 			Long id_vicino = ((Long) f.dstId()).equals(id) ? f.srcId() : f.dstId();
 			p.add(mappaAffinita.get(id_vicino));
 		});
@@ -245,7 +245,7 @@ public class Advertisement {
 		System.setProperty("hadoop.home.dir", "C:\\Hadoop");
 		SparkConf conf = new SparkConf().setAppName("Advertisement").setMaster("local[4]");
 		jsc = new JavaSparkContext(conf);
-		loadGraph("src/main/resources/grafo-medio.txt", true);
+		loadGraph("src/main/resources/grafo-grande.txt", false);
 		GraphOps<Object, Object> graphOps = Graph.graphToGraphOps(grafo, grafo.vertices().vdTag(),
 				grafo.vertices().vdTag());
 		long numVertici = graphOps.numVertices();
