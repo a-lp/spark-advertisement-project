@@ -32,6 +32,8 @@ import org.apache.spark.graphx.VertexRDD;
 import org.apache.spark.storage.StorageLevel;
 
 import scala.Tuple2;
+import scala.runtime.AbstractFunction1;
+import scala.runtime.BoxedUnit;
 
 public class Advertisement {
 	public static JavaSparkContext jsc;
@@ -66,19 +68,27 @@ public class Advertisement {
 		 * costante. Questa verrà utilizzata per il calcolo delle affinità o per il
 		 * calcolo del valore di centralità.
 		 */
-		graphOps.collectEdges(EdgeDirection.Either()).toJavaRDD()
-				.foreach(new VoidFunction<Tuple2<Object, Edge<Object>[]>>() {
-					@Override
-					public void call(Tuple2<Object, Edge<Object>[]> t) throws Exception {
-						mappaVicini.put((Long) t._1(), t._2());
-					}
-				});
+		System.out.println("Caricamento mappaVicini.");
+		graphOps.collectNeighborIds(EdgeDirection.Either()).foreach(new AbstractFunction1<Tuple2<Object,long[]>, BoxedUnit> implements Serializable() {
+
+			@Override
+			public BoxedUnit apply(Tuple2<Object, long[]> arg0) {
+				System.out.println(arg0._1());
+				Edge<Object>[] adj = null;
+				System.arraycopy(arg0._2(), 0, adj, 0, arg0._2().length);
+				mappaVicini.put((Long) arg0._1(), adj);
+				return null;
+			}
+			
+		});
+		System.out.println("Creazione affinità.");
 		if (creaAffinita)
 			creaAffinita(grafo.vertices());
 		/*
 		 * Leggo i valori di affinità presenti nel file generato da creaAffinita, quindi
 		 * le inserisco in una HashMap per potervi accedere in tempo costante.
 		 */
+		System.out.println("Caricamento affinità.");
 		JavaRDD<String> affinita = jsc.textFile("src/main/resources/affinita.txt");
 		mappaAffinita = affinita.mapToPair(s -> {
 			Long id_vertex = Long.parseLong(s.split(" ")[0]); /* Chiave */
@@ -86,6 +96,7 @@ public class Advertisement {
 
 			return new Tuple2<Long, Double>(id_vertex, value);
 		}).collectAsMap();
+		System.out.println("Caricamento grafo completato.");
 	}
 
 	/**
@@ -157,6 +168,7 @@ public class Advertisement {
 	 * @return Valore di centralità Double del vertice passato a parametro.
 	 */
 	public static double calcolaCentralita(Long id) {
+		System.out.println("Calcolo centralità di "+id);
 		/*
 		 * Ricavo i nodi adiacenti tramite gli archi uscenti dal nodo passato a
 		 * parametro
@@ -169,10 +181,11 @@ public class Advertisement {
 		 * Per ogni vertice adiacente al nodo, sommo i valori di affinita. L'accumulator
 		 * mi permette di lavorare in parallelo.
 		 */
-		jsc.parallelize(Arrays.asList(vicini)).foreach(f -> {
+		for(int i=0; i<vicini.length; i++) {
+			Edge f = vicini[i];
 			Long id_vicino = ((Long) f.dstId()).equals(id) ? f.srcId() : f.dstId();
 			p.add(mappaAffinita.get(id_vicino));
-		});
+		};
 		/*
 		 * Restituisco il valore di centralita' ottenuto dalla divisione tra (affinita
 		 * dei vicini)^2 / (numero di vicini)^2
@@ -189,6 +202,7 @@ public class Advertisement {
 	 * @return Valore Double di utilità del nodo passato a parametro.
 	 */
 	public static double calcolaUtilita(Long id, Double alpha) {
+		System.out.println("Calcolo utilità di "+id);
 		return alpha * mappaAffinita.get(id) + (1 - alpha) * calcolaCentralita(id);
 	}
 
@@ -201,6 +215,7 @@ public class Advertisement {
 	 *         uguale a k.
 	 */
 	public static List<Tuple2<Long, Double>> KMigliori(int k) {
+		System.out.println("Calcolo dei k migliori.");
 		mappaUtilita = grafo.vertices().toJavaRDD()
 				.mapToPair(s -> new Tuple2<Long, Double>((Long) s._1(), calcolaUtilita((Long) s._1(), .5)));
 		List<Tuple2<Long, Double>> risultato = new ArrayList<Tuple2<Long, Double>>(mappaUtilita.collect());
@@ -244,9 +259,9 @@ public class Advertisement {
 		/* Configurazione */
 		System.setProperty("hadoop.home.dir", "C:\\Hadoop");
 		SparkConf conf = new SparkConf().setAppName("Advertisement").setMaster("local[*]").
-				set("spark.driver.cores", "1").set("spark.driver.memory", "4g");
+				set("spark.driver.cores", "4").set("spark.driver.memory", "4g");
 		jsc = new JavaSparkContext(conf);
-		loadGraph("src/main/resources/grafo-medio.txt", true);
+		loadGraph("src/main/resources/grafo-grande-abbastanza.txt", true);
 		GraphOps<Object, Object> graphOps = Graph.graphToGraphOps(grafo, grafo.vertices().vdTag(),
 				grafo.vertices().vdTag());
 		long numVertici = graphOps.numVertices();
