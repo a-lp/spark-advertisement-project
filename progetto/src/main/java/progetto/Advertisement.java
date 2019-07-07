@@ -3,7 +3,6 @@ package progetto;
 import java.io.FileWriter;
 import java.io.IOException;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.HashMap;
@@ -16,12 +15,10 @@ import java.util.Random;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
 
-import org.apache.spark.Accumulator;
 import org.apache.spark.SparkConf;
 import org.apache.spark.api.java.JavaPairRDD;
 import org.apache.spark.api.java.JavaRDD;
 import org.apache.spark.api.java.JavaSparkContext;
-import org.apache.spark.api.java.function.VoidFunction;
 import org.apache.spark.graphx.Edge;
 import org.apache.spark.graphx.EdgeDirection;
 import org.apache.spark.graphx.EdgeRDD;
@@ -38,7 +35,7 @@ public class Advertisement {
 	public static Graph<Long, Long> grafo;
 	public static FileWriter fw;
 	public static Map<Long, Double> mappaAffinita = new HashMap<Long, Double>();
-	public static Map<Long, Edge<Long>[]> mappaVicini = new HashMap<Long, Edge<Long>[]>();
+	public static VertexRDD<long[]> mappaVicini;
 	public static JavaPairRDD<Long, Double> mappaUtilita;
 
 	/**
@@ -57,11 +54,11 @@ public class Advertisement {
 		 */
 //		grafo = GraphLoader.edgeListFile(jsc.sc(), path, false, 1, StorageLevel.MEMORY_AND_DISK_SER(),
 //				StorageLevel.MEMORY_AND_DISK_SER());
-		System.out.println("Inizio");
+		System.out.println("Inizio lettura grafo da file");
 		JavaRDD<String> file = jsc.textFile(path);
 		JavaRDD<Edge<Long>> archi = file.map(f -> {
 			if (f != null) {
-				String[] vertici = f.split("\t");
+				String[] vertici = f.split(" "); // ^([0-9]+)
 				return new Edge<Long>(Long.parseLong(vertici[0]), Long.parseLong(vertici[1]), null);
 			}
 			return null;
@@ -70,6 +67,7 @@ public class Advertisement {
 		EdgeRDD<Long> pairsEdgeRDD = EdgeRDD.fromEdges(archi.rdd(), longTag, longTag);
 		grafo = Graph.fromEdges(pairsEdgeRDD, null, StorageLevel.MEMORY_AND_DISK_SER(),
 				StorageLevel.MEMORY_AND_DISK_SER(), longTag, longTag);
+		System.out.println("Grafo caricato, memorizzazione dei nodi adiacenti su mappa.");
 		/* GraphOps è una classe di utilità sui Grafi */
 		GraphOps<Long, Long> graphOps = Graph.graphToGraphOps(grafo, grafo.vertices().vdTag(),
 				grafo.vertices().vdTag());
@@ -79,26 +77,39 @@ public class Advertisement {
 		 * costante. Questa verrà utilizzata per il calcolo delle affinità o per il
 		 * calcolo del valore di centralità.
 		 */
-		graphOps.collectEdges(EdgeDirection.Either()).toJavaRDD()
-				.foreach(new VoidFunction<Tuple2<Object, Edge<Long>[]>>() {
-					@Override
-					public void call(Tuple2<Object, Edge<Long>[]> t) throws Exception {
-						mappaVicini.put((Long) t._1(), t._2());
-					}
-				});
+		System.out.println("Caricamento mappa vicini.");
+		mappaVicini = graphOps.collectNeighborIds(EdgeDirection.Either());
 		if (creaAffinita)
-			creaAffinita(grafo.vertices());
+			creaAffinita();
 		/*
 		 * Leggo i valori di affinità presenti nel file generato da creaAffinita, quindi
 		 * le inserisco in una HashMap per potervi accedere in tempo costante.
 		 */
-		JavaRDD<String> affinita = jsc.textFile("src/main/resources/affinita.txt");
-		mappaAffinita = affinita.mapToPair(s -> {
+		System.out.println("Caricamento mappa affinità.");
+		JavaRDD<String> affinitaTesto = jsc.textFile("src/main/resources/affinita.txt");
+		mappaAffinita = affinitaTesto.mapToPair(s -> {
 			Long id_vertex = Long.parseLong(s.split(" ")[0]); /* Chiave */
 			Double value = Double.parseDouble(s.split(" ")[1]); /* Valore */
 
 			return new Tuple2<Long, Double>(id_vertex, value);
 		}).collectAsMap();
+		System.out.println("Caricamento grafo completato.");
+	}
+
+	public static void creaAffinitaSoft(long numVertici) {
+		System.out.println("Creazione affinità soft.");
+		Random random = new Random();
+		try {
+			fw = new FileWriter("src/main/resources/affinita.txt", false);
+			for (long i = 0; i < numVertici; i++) {
+				fw.write(i + " " + random.nextDouble() + "\n");
+			}
+			fw.close();
+			System.out.println("File chiuso.");
+		} catch (IOException e) {
+			System.out.println("Errore apertura file");
+			e.printStackTrace();
+		}
 	}
 
 	/**
@@ -111,7 +122,7 @@ public class Advertisement {
 	 * 
 	 * @param vertexRDD Vertici del grafo.
 	 */
-	public static void creaAffinita(VertexRDD<Long> vertexRDD) {
+	public static void creaAffinita() {
 		Random random = new Random();
 		Set<Long> inseriti = new HashSet<Long>();
 		Double valore_src, valore_adj;
@@ -124,22 +135,21 @@ public class Advertisement {
 			 * valutato in precedenza, quindi genero un valore Double casuale e lo memorizzo
 			 * su file.
 			 */
-			for (Tuple2<Object, Long> tupla : vertexRDD.toJavaRDD().collect()) {
+			for (Tuple2<Object, long[]> tupla : mappaVicini.toJavaRDD().collect()) {
 				vertice_src = (Long) tupla._1();
 				valore_src = random.nextDouble();
 				if (!inseriti.contains(vertice_src)) {
 					inseriti.add(vertice_src);
 					fileText = vertice_src + " " + valore_src + "\n";
 					fw.write(fileText);
-					System.out.println(fileText);
 				}
 				/*
 				 * Controllo i nodi adiacenti del nodo estratto in precedenza. Per ognuno di
 				 * essi ripeto la procedura di inserimento su file, controllando che non siano
 				 * già stati inseriti nell'insieme di vertici già valutati.
 				 */
-				for (Edge<Long> f : mappaVicini.get(vertice_src)) {
-					vertice_adj = ((Long) f.dstId()).equals(vertice_src) ? f.srcId() : f.dstId();
+				for (int i = 0; i < tupla._2().length; i++) {
+					vertice_adj = tupla._2()[i];
 					if (!inseriti.contains(vertice_adj)) {
 						inseriti.add(vertice_adj);
 						/*
@@ -169,28 +179,24 @@ public class Advertisement {
 	 * @param id Vertice su cui calcolare il valore di centralità
 	 * @return Valore di centralità Double del vertice passato a parametro.
 	 */
-	public static double calcolaCentralita(Long id) {
-		/*
-		 * Ricavo i nodi adiacenti tramite gli archi uscenti dal nodo passato a
-		 * parametro
-		 */
-		Edge<Long>[] vicini = mappaVicini.get(id);
-
-		Accumulator<Double> p = jsc.accumulator(0.0); /* variabile thread safe su cui poter sommare valori */
-
+	public static JavaPairRDD<Long, Double> calcolaCentralita() {
 		/*
 		 * Per ogni vertice adiacente al nodo, sommo i valori di affinita. L'accumulator
 		 * mi permette di lavorare in parallelo.
 		 */
-		Arrays.asList(vicini).forEach(f -> {
-			Long id_vicino = ((Long) f.dstId()).equals(id) ? f.srcId() : f.dstId();
-			p.add(mappaAffinita.get(id_vicino));
+		System.out.println("Inizio calcolo centralità");
+		JavaPairRDD<Long, Double> centralita = mappaVicini.toJavaRDD().mapToPair(f -> {
+			Double p = 0.0;
+			for (int i = 0; i < f._2().length; i++)
+				p += mappaAffinita.get(f._2()[i]);
+			return new Tuple2<Long, Double>((Long) f._1(), (p * p) / (f._2().length * f._2().length));
 		});
 		/*
 		 * Restituisco il valore di centralita' ottenuto dalla divisione tra (affinita
 		 * dei vicini)^2 / (numero di vicini)^2
 		 */
-		return (p.value() * p.value()) / (vicini.length * vicini.length);
+		System.out.println("Fine calcolo centralità");
+		return centralita;
 	}
 
 	/**
@@ -201,8 +207,11 @@ public class Advertisement {
 	 * @param alpha Parametro alfa nell'intervallo [0,1].
 	 * @return Valore Double di utilità del nodo passato a parametro.
 	 */
-	public static double calcolaUtilita(Long id, Double alpha) {
-		return alpha * mappaAffinita.get(id) + (1 - alpha) * calcolaCentralita(id);
+	public static JavaPairRDD<Long, Double> calcolaUtilita(Double alpha) {
+		System.out.println("Inizio calcolo Utilità");
+		JavaPairRDD<Long, Double> centralita = calcolaCentralita();
+		return centralita.mapToPair(f -> new Tuple2<Long, Double>((Long) f._1(),
+				alpha * mappaAffinita.get((Long) f._1()) + (1 - alpha) * f._2()));
 	}
 
 	/**
@@ -214,14 +223,11 @@ public class Advertisement {
 	 *         uguale a k.
 	 */
 	public static List<Tuple2<Long, Double>> KMigliori(int k) {
-		mappaUtilita = grafo.vertices().toJavaRDD()
-				.mapToPair(s -> new Tuple2<Long, Double>((Long) s._1(), calcolaUtilita((Long) s._1(), .5)));
-		List<Tuple2<Long, Double>> risultato = new ArrayList<Tuple2<Long, Double>>(mappaUtilita.collect());
-		risultato.sort((Tuple2<Long, Double> o1, Tuple2<Long, Double> o2) -> -Double.compare(o1._2(), o2._2()));
-		if (k > risultato.size())
-			k = risultato.size();
-
-		return risultato.subList(0, k);
+		JavaPairRDD<Long, Double> risultato = calcolaUtilita(.5);
+		JavaPairRDD<Double, Long> risultatoSwaped = risultato.mapToPair(x -> x.swap());
+		risultatoSwaped = risultatoSwaped.sortByKey(false);
+		JavaPairRDD<Long, Double> risultatoFinale = risultatoSwaped.mapToPair(x -> x.swap());
+		return risultatoFinale.take(k);
 
 	}
 
@@ -256,15 +262,17 @@ public class Advertisement {
 	public static void main(String[] args) {
 		/* Configurazione */
 		System.setProperty("hadoop.home.dir", "C:\\Hadoop");
-		SparkConf conf = new SparkConf().setAppName("Advertisement").setMaster("local[*]");
+		SparkConf conf = new SparkConf().setAppName("Advertisement").setMaster("local[*]")
+				.set("spark.driver.cores", "4").set("spark.driver.memory", "4g");
 		jsc = new JavaSparkContext(conf);
-		loadGraph("src/main/resources/grafo-enorme.txt", true);
+		loadGraph("src/main/resources/grafi/grafo-grande.txt", false);
 		GraphOps<Long, Long> graphOps = Graph.graphToGraphOps(grafo, grafo.vertices().vdTag(),
 				grafo.vertices().vdTag());
 		long numVertici = graphOps.numVertices();
 		long numEdge = graphOps.numEdges();
 		/* Esecuzione */
 		int k = 10;
+		System.out.println("Calcolo dei migliori K");
 		long previousTime = System.currentTimeMillis();
 		List<Tuple2<Long, Double>> risultato = KMigliori(k);
 		double elapsedTime = (System.currentTimeMillis() - previousTime) / 1000.0;
