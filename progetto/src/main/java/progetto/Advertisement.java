@@ -243,7 +243,8 @@ public class Advertisement {
 	public static void main(String[] args) {
 		/* Configurazione */
 		System.setProperty("hadoop.home.dir", "C:\\Hadoop");
-		SparkConf conf = new SparkConf().setAppName("Advertisement").setMaster("local[4]");
+		SparkConf conf = new SparkConf().setAppName("Advertisement").setMaster("local[*]").
+				set("spark.driver.cores", "1").set("spark.driver.memory", "4g");
 		jsc = new JavaSparkContext(conf);
 		loadGraph("src/main/resources/grafo-medio.txt", true);
 		GraphOps<Object, Object> graphOps = Graph.graphToGraphOps(grafo, grafo.vertices().vdTag(),
