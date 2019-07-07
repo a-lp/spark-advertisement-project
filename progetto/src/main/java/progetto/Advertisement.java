@@ -15,7 +15,6 @@ import java.util.Map;
 import java.util.Random;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
-import java.util.regex.Pattern;
 
 import org.apache.spark.Accumulator;
 import org.apache.spark.SparkConf;
@@ -25,20 +24,21 @@ import org.apache.spark.api.java.JavaSparkContext;
 import org.apache.spark.api.java.function.VoidFunction;
 import org.apache.spark.graphx.Edge;
 import org.apache.spark.graphx.EdgeDirection;
+import org.apache.spark.graphx.EdgeRDD;
 import org.apache.spark.graphx.Graph;
-import org.apache.spark.graphx.GraphLoader;
 import org.apache.spark.graphx.GraphOps;
 import org.apache.spark.graphx.VertexRDD;
 import org.apache.spark.storage.StorageLevel;
 
 import scala.Tuple2;
+import scala.reflect.ClassTag;
 
 public class Advertisement {
 	public static JavaSparkContext jsc;
-	public static Graph<Object, Object> grafo;
+	public static Graph<Long, Long> grafo;
 	public static FileWriter fw;
 	public static Map<Long, Double> mappaAffinita = new HashMap<Long, Double>();
-	public static Map<Long, Edge<Object>[]> mappaVicini = new HashMap<Long, Edge<Object>[]>();
+	public static Map<Long, Edge<Long>[]> mappaVicini = new HashMap<Long, Edge<Long>[]>();
 	public static JavaPairRDD<Long, Double> mappaUtilita;
 
 	/**
@@ -55,10 +55,23 @@ public class Advertisement {
 		/*
 		 * Caricamento del grafo a partire dal file passato a parametro.
 		 */
-		grafo = GraphLoader.edgeListFile(jsc.sc(), path, false, 1, StorageLevel.MEMORY_AND_DISK_SER(),
-				StorageLevel.MEMORY_AND_DISK_SER());
+//		grafo = GraphLoader.edgeListFile(jsc.sc(), path, false, 1, StorageLevel.MEMORY_AND_DISK_SER(),
+//				StorageLevel.MEMORY_AND_DISK_SER());
+		System.out.println("Inizio");
+		JavaRDD<String> file = jsc.textFile(path);
+		JavaRDD<Edge<Long>> archi = file.map(f -> {
+			if (f != null) {
+				String[] vertici = f.split("\t");
+				return new Edge<Long>(Long.parseLong(vertici[0]), Long.parseLong(vertici[1]), null);
+			}
+			return null;
+		});
+		ClassTag<Long> longTag = scala.reflect.ClassTag$.MODULE$.apply(Long.class);
+		EdgeRDD<Long> pairsEdgeRDD = EdgeRDD.fromEdges(archi.rdd(), longTag, longTag);
+		grafo = Graph.fromEdges(pairsEdgeRDD, null, StorageLevel.MEMORY_AND_DISK_SER(),
+				StorageLevel.MEMORY_AND_DISK_SER(), longTag, longTag);
 		/* GraphOps è una classe di utilità sui Grafi */
-		GraphOps<Object, Object> graphOps = Graph.graphToGraphOps(grafo, grafo.vertices().vdTag(),
+		GraphOps<Long, Long> graphOps = Graph.graphToGraphOps(grafo, grafo.vertices().vdTag(),
 				grafo.vertices().vdTag());
 
 		/*
@@ -67,9 +80,9 @@ public class Advertisement {
 		 * calcolo del valore di centralità.
 		 */
 		graphOps.collectEdges(EdgeDirection.Either()).toJavaRDD()
-				.foreach(new VoidFunction<Tuple2<Object, Edge<Object>[]>>() {
+				.foreach(new VoidFunction<Tuple2<Object, Edge<Long>[]>>() {
 					@Override
-					public void call(Tuple2<Object, Edge<Object>[]> t) throws Exception {
+					public void call(Tuple2<Object, Edge<Long>[]> t) throws Exception {
 						mappaVicini.put((Long) t._1(), t._2());
 					}
 				});
@@ -98,7 +111,7 @@ public class Advertisement {
 	 * 
 	 * @param vertexRDD Vertici del grafo.
 	 */
-	public static void creaAffinita(VertexRDD<Object> vertexRDD) {
+	public static void creaAffinita(VertexRDD<Long> vertexRDD) {
 		Random random = new Random();
 		Set<Long> inseriti = new HashSet<Long>();
 		Double valore_src, valore_adj;
@@ -111,7 +124,7 @@ public class Advertisement {
 			 * valutato in precedenza, quindi genero un valore Double casuale e lo memorizzo
 			 * su file.
 			 */
-			for (Tuple2<Object, Object> tupla : vertexRDD.toJavaRDD().collect()) {
+			for (Tuple2<Object, Long> tupla : vertexRDD.toJavaRDD().collect()) {
 				vertice_src = (Long) tupla._1();
 				valore_src = random.nextDouble();
 				if (!inseriti.contains(vertice_src)) {
@@ -125,7 +138,7 @@ public class Advertisement {
 				 * essi ripeto la procedura di inserimento su file, controllando che non siano
 				 * già stati inseriti nell'insieme di vertici già valutati.
 				 */
-				for (Edge<Object> f : mappaVicini.get(vertice_src)) {
+				for (Edge<Long> f : mappaVicini.get(vertice_src)) {
 					vertice_adj = ((Long) f.dstId()).equals(vertice_src) ? f.srcId() : f.dstId();
 					if (!inseriti.contains(vertice_adj)) {
 						inseriti.add(vertice_adj);
@@ -161,7 +174,7 @@ public class Advertisement {
 		 * Ricavo i nodi adiacenti tramite gli archi uscenti dal nodo passato a
 		 * parametro
 		 */
-		Edge<Object>[] vicini = mappaVicini.get(id);
+		Edge<Long>[] vicini = mappaVicini.get(id);
 
 		Accumulator<Double> p = jsc.accumulator(0.0); /* variabile thread safe su cui poter sommare valori */
 
@@ -243,10 +256,10 @@ public class Advertisement {
 	public static void main(String[] args) {
 		/* Configurazione */
 		System.setProperty("hadoop.home.dir", "C:\\Hadoop");
-		SparkConf conf = new SparkConf().setAppName("Advertisement").setMaster("local[4]");
+		SparkConf conf = new SparkConf().setAppName("Advertisement").setMaster("local[*]");
 		jsc = new JavaSparkContext(conf);
-		loadGraph("src/main/resources/grafo-grande.txt", false);
-		GraphOps<Object, Object> graphOps = Graph.graphToGraphOps(grafo, grafo.vertices().vdTag(),
+		loadGraph("src/main/resources/grafo-enorme.txt", true);
+		GraphOps<Long, Long> graphOps = Graph.graphToGraphOps(grafo, grafo.vertices().vdTag(),
 				grafo.vertices().vdTag());
 		long numVertici = graphOps.numVertices();
 		long numEdge = graphOps.numEdges();
@@ -259,7 +272,7 @@ public class Advertisement {
 		/* Stampa dei risultati */
 		try {
 			TimeUnit.SECONDS.sleep(1);
-			System.out.println("Archi: "+numEdge+"\nNodi: "+numVertici+"\nTempo di esecuzione :" + elapsedTime);
+			System.out.println("Archi: " + numEdge + "\nNodi: " + numVertici + "\nTempo di esecuzione :" + elapsedTime);
 			for (int i = 0; i < 3; i++) {
 				System.out.print(".");
 				TimeUnit.SECONDS.sleep(1);
