@@ -37,6 +37,8 @@ public class Advertisement {
 	public static Map<Long, Double> mappaAffinita = new HashMap<Long, Double>();
 	public static VertexRDD<long[]> mappaVicini;
 	public static JavaPairRDD<Long, Double> mappaUtilita;
+	public static Integer tipologiaGrafo;
+	public static Map<Integer, String> mappaFile = new HashMap<Integer, String>();
 
 	/**
 	 * Funzione per il caricamento di un grafo a partire da un file con path passato
@@ -129,7 +131,7 @@ public class Advertisement {
 		String fileText;
 		Long vertice_src, vertice_adj;
 		try {
-			fw = new FileWriter("src/main/resources/affinita.txt", false);
+			fw = new FileWriter("src/main/resources/affinita-" + mappaFile.get(tipologiaGrafo), false);
 			/*
 			 * Per ogni vertice della collezione, controllo che questo non sia già stato
 			 * valutato in precedenza, quindi genero un valore Double casuale e lo memorizzo
@@ -261,11 +263,17 @@ public class Advertisement {
 
 	public static void main(String[] args) {
 		/* Configurazione */
+		mappaFile.put(1, "grande-abbastanza.txt");
+		mappaFile.put(2, "grande.txt");
+		mappaFile.put(3, "medio.txt");
+		mappaFile.put(4, "piccolo.txt");
+		tipologiaGrafo = 2;
 		System.setProperty("hadoop.home.dir", "C:\\Hadoop");
 		SparkConf conf = new SparkConf().setAppName("Advertisement").setMaster("local[*]")
 				.set("spark.driver.cores", "4").set("spark.driver.memory", "4g");
 		jsc = new JavaSparkContext(conf);
-		loadGraph("src/main/resources/grafi/grafo-grande.txt", false);
+
+		loadGraph("src/main/resources/grafo-" + mappaFile.get(tipologiaGrafo), true);
 		GraphOps<Long, Long> graphOps = Graph.graphToGraphOps(grafo, grafo.vertices().vdTag(),
 				grafo.vertices().vdTag());
 		long numVertici = graphOps.numVertices();
