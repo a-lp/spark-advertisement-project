@@ -42,7 +42,7 @@ public class Advertisement {
 
 	/**
 	 * Funzione per il caricamento di un grafo a partire da un file con path passato
-	 * a parametro. Insieme al caricamento del grafo, vengono generate due mappa per
+	 * a parametro. Insieme al caricamento del grafo, vengono generate due mappe per
 	 * le affinità e gli archi adiacenti. Queste strutture serviranno come supporto
 	 * alle operazioni future, quali il calcolo dei valori di centralità e utilità.
 	 * 
@@ -122,10 +122,11 @@ public class Advertisement {
 	/**
 	 * Funzione per la generazione di valori di affinità per ognuno degli n vertici
 	 * nel grafo. Nell'attribuzione di questi valori, si tiene conto dei nodi
-	 * adiacenti in modo da avere dati coerenti.
+	 * adiacenti.
 	 * 
-	 * I dati vengono memorizzati nel file src/main/resources/affinita.txt nel
-	 * formato "ID_Vertice Valore". L'esecuzione della funzione sovrascrive il file.
+	 * I dati vengono memorizzati nel file
+	 * src/main/resources/affinita-{tipologia}.txt nel formato "ID_Vertice Valore".
+	 * L'esecuzione della funzione sovrascrive il file.
 	 * 
 	 */
 	public static void creaAffinita() {
@@ -167,7 +168,6 @@ public class Advertisement {
 								* (Math.min(1 - valore_src, random.nextDouble() * 0.2)) * random.nextDouble());
 						fileText = vertice_adj + " " + valore_adj + "\n";
 						fw.write(fileText);
-						// System.out.println(vertice_src + ")\t" + fileText);
 					}
 				}
 			}
@@ -182,23 +182,27 @@ public class Advertisement {
 	 * Funzione per il calcolo del valore di centralità a partire dai valori di
 	 * affinità dei vertici vicini ad un nodo.
 	 * 
-	 * @return Valore di centralità Double del vertice passato a parametro.
+	 * @return Coppie (Vertice, Valore) contenenti, per ogni vertice, il valore di
+	 *         centralità.
 	 */
 	public static JavaPairRDD<Long, Double> calcolaCentralita() {
-		/*
-		 * Per ogni vertice adiacente al nodo, sommo i valori di affinita. L'accumulator
-		 * mi permette di lavorare in parallelo.
-		 */
 		System.out.println("Inizio calcolo centralità");
 		JavaPairRDD<Long, Double> centralita = mappaVicini.toJavaRDD().mapToPair(f -> {
 			Double p = 0.0;
+			/*
+			 * Per ogni vertice adiacente al nodo, sommo i rispettivi valori di affinita.
+			 */
 			for (int i = 0; i < f._2().length; i++)
 				p += mappaAffinita.get(f._2()[i]);
+			/*
+			 * Restituisco la coppia contenente l'id del vertice e la centralità calcolata
+			 * come p^2/(#nodi_adiacenti)^2.
+			 */
 			return new Tuple2<Long, Double>((Long) f._1(), (p * p) / (f._2().length * f._2().length));
 		});
 		/*
-		 * Restituisco il valore di centralita' ottenuto dalla divisione tra (affinita
-		 * dei vicini)^2 / (numero di vicini)^2
+		 * Restituisco la struttura dati contenente le coppie dei nodi con i valori di
+		 * centralità.
 		 */
 		System.out.println("Fine calcolo centralità");
 		return centralita;
@@ -209,7 +213,8 @@ public class Advertisement {
 	 * ottenuto come: alpha * affinita(nodi_vicini) + (1-alpha) * centralita(nodo).
 	 * 
 	 * @param alpha Parametro alfa nell'intervallo [0,1].
-	 * @return Valore Double di utilità del nodo passato a parametro.
+	 * @return Coppie (Vertice, Valore) contenente i valori di utilità per ogni
+	 *         nodo.
 	 */
 	public static JavaPairRDD<Long, Double> calcolaUtilita(Double alpha) {
 		System.out.println("Inizio calcolo Utilità");
@@ -285,7 +290,10 @@ public class Advertisement {
 		int k = 10;
 		System.out.println("Calcolo dei migliori K");
 		long previousTime = System.currentTimeMillis();
-		List<Tuple2<Long, Double>> risultato = KMigliori(k);
+		/*
+		 * Verifico che il numero di nodi sia maggiore o uguale a k.
+		 */
+		List<Tuple2<Long, Double>> risultato = KMigliori((k <= ((int) numVertici) ? k : ((int) numVertici)));
 		double elapsedTime = (System.currentTimeMillis() - previousTime) / 1000.0;
 		jsc.close();
 
