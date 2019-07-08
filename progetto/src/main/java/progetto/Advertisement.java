@@ -54,8 +54,6 @@ public class Advertisement {
 		/*
 		 * Caricamento del grafo a partire dal file passato a parametro.
 		 */
-//		grafo = GraphLoader.edgeListFile(jsc.sc(), path, false, 1, StorageLevel.MEMORY_AND_DISK_SER(),
-//				StorageLevel.MEMORY_AND_DISK_SER());
 		System.out.println("Inizio lettura grafo da file");
 		JavaRDD<String> file = jsc.textFile(path);
 		JavaRDD<Edge<Long>> archi = file.map(f -> {
@@ -70,14 +68,14 @@ public class Advertisement {
 		grafo = Graph.fromEdges(pairsEdgeRDD, null, StorageLevel.MEMORY_AND_DISK_SER(),
 				StorageLevel.MEMORY_AND_DISK_SER(), longTag, longTag);
 		System.out.println("Grafo caricato, memorizzazione dei nodi adiacenti su mappa.");
+
 		/* GraphOps è una classe di utilità sui Grafi */
 		GraphOps<Long, Long> graphOps = Graph.graphToGraphOps(grafo, grafo.vertices().vdTag(),
 				grafo.vertices().vdTag());
 
 		/*
-		 * Inserisco gli archi adiacenti in una HashMap per potervi accedere in tempo
-		 * costante. Questa verrà utilizzata per il calcolo delle affinità o per il
-		 * calcolo del valore di centralità.
+		 * Memorizzo i le liste di adiacenza di ogni nodo in una variabile globale
+		 * statica.
 		 */
 		System.out.println("Caricamento mappa vicini.");
 		mappaVicini = graphOps.collectNeighborIds(EdgeDirection.Either());
@@ -98,6 +96,13 @@ public class Advertisement {
 		System.out.println("Caricamento grafo completato.");
 	}
 
+	/**
+	 * Funzione per la creazione di valori di affinità che non tengano conto delle
+	 * relazioni di vicinanza tra i nodi.
+	 * 
+	 * @param numVertici Numero di vertici su cui calcolare in modo casuale un
+	 *                   valore di affinità.
+	 */
 	public static void creaAffinitaSoft(long numVertici) {
 		System.out.println("Creazione affinità soft.");
 		Random random = new Random();
@@ -122,7 +127,6 @@ public class Advertisement {
 	 * I dati vengono memorizzati nel file src/main/resources/affinita.txt nel
 	 * formato "ID_Vertice Valore". L'esecuzione della funzione sovrascrive il file.
 	 * 
-	 * @param vertexRDD Vertici del grafo.
 	 */
 	public static void creaAffinita() {
 		Random random = new Random();
@@ -178,7 +182,6 @@ public class Advertisement {
 	 * Funzione per il calcolo del valore di centralità a partire dai valori di
 	 * affinità dei vertici vicini ad un nodo.
 	 * 
-	 * @param id Vertice su cui calcolare il valore di centralità
 	 * @return Valore di centralità Double del vertice passato a parametro.
 	 */
 	public static JavaPairRDD<Long, Double> calcolaCentralita() {
@@ -203,9 +206,8 @@ public class Advertisement {
 
 	/**
 	 * Funzione per il calcolo del valore di utilità di un nodo. Questo valore è
-	 * ottenuto come: alpha * affinita(nodo) + (1-alpha) * centralita(nodo).
+	 * ottenuto come: alpha * affinita(nodi_vicini) + (1-alpha) * centralita(nodo).
 	 * 
-	 * @param id    Nodo su cui calcolare il valore di utilità.
 	 * @param alpha Parametro alfa nell'intervallo [0,1].
 	 * @return Valore Double di utilità del nodo passato a parametro.
 	 */
@@ -262,7 +264,7 @@ public class Advertisement {
 	}
 
 	public static void main(String[] args) {
-		/* Configurazione */
+		/* Configurazione di Spark e dei file */
 		mappaFile.put(1, "grande-abbastanza.txt");
 		mappaFile.put(2, "grande.txt");
 		mappaFile.put(3, "medio.txt");
@@ -276,8 +278,9 @@ public class Advertisement {
 		loadGraph("src/main/resources/grafo-" + mappaFile.get(tipologiaGrafo), true);
 		GraphOps<Long, Long> graphOps = Graph.graphToGraphOps(grafo, grafo.vertices().vdTag(),
 				grafo.vertices().vdTag());
-		long numVertici = graphOps.numVertices();
-		long numEdge = graphOps.numEdges();
+		long numVertici = graphOps.numVertices(); /* Numero vertici usato per la stampa dei tempi */
+		long numEdge = graphOps.numEdges(); /* Numero di archi usato per la stampa dei tempi */
+
 		/* Esecuzione */
 		int k = 10;
 		System.out.println("Calcolo dei migliori K");
@@ -285,6 +288,7 @@ public class Advertisement {
 		List<Tuple2<Long, Double>> risultato = KMigliori(k);
 		double elapsedTime = (System.currentTimeMillis() - previousTime) / 1000.0;
 		jsc.close();
+
 		/* Stampa dei risultati */
 		try {
 			TimeUnit.SECONDS.sleep(1);
