@@ -55,7 +55,7 @@ public class Advertisement {
 	 *                     "id_src id_dst"
 	 * @param creaAffinita Parametro Boolean per creare il file di affinita
 	 */
-	public static void loadGraph(String path, Boolean creaAffinita) {
+	public static void caricaGrafo(String path, Boolean creaAffinita) {
 		/*
 		 * Caricamento del grafo a partire dal file passato a parametro.
 		 */
@@ -232,7 +232,8 @@ public class Advertisement {
 
 	/**
 	 * Funzione che riordina i vertici basandosi sul valore di utilità e restituisce
-	 * i primi k con valore più alto.
+	 * i primi k con valore più alto. Scambia la chiave con il valore, quindi ordina
+	 * per chiave e riscambia valore con chiave.
 	 * 
 	 * @param k Numero di vertici da restituire
 	 * @return Lista di coppie (Vertice, Valore) ordinata e con lunghezza minore o
@@ -241,7 +242,7 @@ public class Advertisement {
 	public static List<Tuple2<Long, Double>> KMigliori(int k) {
 		JavaPairRDD<Long, Double> risultato = calcolaUtilita(.5);
 		JavaPairRDD<Double, Long> risultatoSwaped = risultato.mapToPair(x -> x.swap());
-		risultatoSwaped = risultatoSwaped.sortByKey(false);
+		risultatoSwaped = risultatoSwaped.sortByKey(false); /* false: ordine decrescente */
 		JavaPairRDD<Long, Double> risultatoFinale = risultatoSwaped.mapToPair(x -> x.swap());
 		return risultatoFinale.take(k);
 
@@ -253,7 +254,7 @@ public class Advertisement {
 	 * @param hm HashMap da ordinare
 	 * @return Mappa ordinata e convertita in List
 	 */
-	public static List<Tuple2<Long, Double>> sortByValue(Map<Long, Double> hm) {
+	public static List<Tuple2<Long, Double>> ordinaPerValore(Map<Long, Double> hm) {
 		// Create a list from elements of HashMap
 		List<Map.Entry<Long, Double>> list = new LinkedList<Map.Entry<Long, Double>>(hm.entrySet());
 
@@ -275,6 +276,11 @@ public class Advertisement {
 		return risultato;
 	}
 
+	/**
+	 * Funzione per la stampa dei valori che superano una certa soglia.
+	 * 
+	 * @param listaVertici Lista ordinata di vertici da stampare.
+	 */
 	public static void stampaNodi(List<Tuple2<Long, Double>> listaVertici) {
 		int i = 1;
 		for (Tuple2<Long, Double> vertice : listaVertici) {
@@ -300,7 +306,7 @@ public class Advertisement {
 				.set("spark.driver.cores", numeroCore).set("spark.driver.memory", "4g");
 		jsc = new JavaSparkContext(conf);
 		/* Caricamento del grafo in memoria */
-		loadGraph("src/main/resources/grafo-" + mappaFile.get(tipologiaGrafo), true);
+		caricaGrafo("src/main/resources/grafo-" + mappaFile.get(tipologiaGrafo), true);
 		GraphOps<Long, Long> graphOps = Graph.graphToGraphOps(grafo, grafo.vertices().vdTag(),
 				grafo.vertices().vdTag());
 		long numVertici = graphOps.numVertices(); /* Numero vertici usato per la stampa dei tempi */
@@ -329,7 +335,7 @@ public class Advertisement {
 			e.printStackTrace();
 		}
 		System.out.println("Primi " + k + " rispetto ad Affinità");
-		stampaNodi(sortByValue(mappaAffinita).subList(0, (k > mappaAffinita.size() ? mappaAffinita.size() : k)));
+		stampaNodi(ordinaPerValore(mappaAffinita).subList(0, (k > mappaAffinita.size() ? mappaAffinita.size() : k)));
 		System.out.println("Primi " + k + " rispetto ad Utilità");
 		stampaNodi(risultato);
 	}
