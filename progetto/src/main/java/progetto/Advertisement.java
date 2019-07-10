@@ -313,7 +313,7 @@ public class Advertisement {
 		long numEdge = graphOps.numEdges(); /* Numero di archi usato per la stampa dei tempi */
 
 		/* Esecuzione */
-		int k = (int) numVertici;
+		int k = (int) 10;
 		System.out.println("Calcolo dei migliori K");
 		long previousTime = System.currentTimeMillis();
 		/*
