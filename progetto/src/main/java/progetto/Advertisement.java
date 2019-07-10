@@ -31,6 +31,11 @@ import scala.Tuple2;
 import scala.reflect.ClassTag;
 
 public class Advertisement {
+	/* Parametri di configurazione */
+	public static String numeroCore = "4"; /* Numero di core per l'esecuzione */
+	public static Integer tipologiaGrafo = 3; /* Dimensione del grafo */
+	public static Double soglia = .8; /* Soglia di accettazione */
+	/* Strutture di supporto */
 	public final static Double INFINITY = Double.MAX_VALUE;
 	public static JavaSparkContext jsc;
 	public static Graph<Long, Long> grafo;
@@ -38,9 +43,7 @@ public class Advertisement {
 	public static Map<Long, Double> mappaAffinita = new HashMap<Long, Double>();
 	public static VertexRDD<long[]> mappaVicini;
 	public static JavaPairRDD<Long, Double> mappaUtilita;
-	public static Integer tipologiaGrafo;
 	public static Map<Integer, String> mappaFile = new HashMap<Integer, String>();
-	public static Double soglia = .8; /* Soglia di accettazione */
 
 	/**
 	 * Funzione per il caricamento di un grafo a partire da un file con path passato
@@ -273,13 +276,13 @@ public class Advertisement {
 	}
 
 	public static void stampaNodi(List<Tuple2<Long, Double>> listaVertici) {
-		int i=1;
+		int i = 1;
 		for (Tuple2<Long, Double> vertice : listaVertici) {
 			if (vertice._2() < soglia) {
 				System.out.println("Non ci sono più elementi sopra la soglia!");
 				break;
 			} else {
-				System.out.println(i+") "+vertice._1() + ": " + vertice._2());
+				System.out.println(i + ") " + vertice._1() + ": " + vertice._2());
 				i++;
 			}
 		}
@@ -291,12 +294,12 @@ public class Advertisement {
 		mappaFile.put(2, "grande.txt");
 		mappaFile.put(3, "medio.txt");
 		mappaFile.put(4, "piccolo.txt");
-		tipologiaGrafo = 2; /* Scelta del grafo */
+
 		System.setProperty("hadoop.home.dir", "C:\\Hadoop");
 		SparkConf conf = new SparkConf().setAppName("Advertisement").setMaster("local[*]")
-				.set("spark.driver.cores", "4").set("spark.driver.memory", "4g");
+				.set("spark.driver.cores", numeroCore).set("spark.driver.memory", "4g");
 		jsc = new JavaSparkContext(conf);
-
+		/* Caricamento del grafo in memoria */
 		loadGraph("src/main/resources/grafo-" + mappaFile.get(tipologiaGrafo), true);
 		GraphOps<Long, Long> graphOps = Graph.graphToGraphOps(grafo, grafo.vertices().vdTag(),
 				grafo.vertices().vdTag());
@@ -304,7 +307,7 @@ public class Advertisement {
 		long numEdge = graphOps.numEdges(); /* Numero di archi usato per la stampa dei tempi */
 
 		/* Esecuzione */
-		int k = 10;
+		int k = (int) numVertici;
 		System.out.println("Calcolo dei migliori K");
 		long previousTime = System.currentTimeMillis();
 		/*
