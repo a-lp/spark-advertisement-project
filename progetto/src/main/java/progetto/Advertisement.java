@@ -31,6 +31,7 @@ import scala.Tuple2;
 import scala.reflect.ClassTag;
 
 public class Advertisement {
+	public final static Double INFINITY = Double.MAX_VALUE;
 	public static JavaSparkContext jsc;
 	public static Graph<Long, Long> grafo;
 	public static FileWriter fw;
@@ -39,6 +40,7 @@ public class Advertisement {
 	public static JavaPairRDD<Long, Double> mappaUtilita;
 	public static Integer tipologiaGrafo;
 	public static Map<Integer, String> mappaFile = new HashMap<Integer, String>();
+	public static Double soglia = .8; /* Soglia di accettazione */
 
 	/**
 	 * Funzione per il caricamento di un grafo a partire da un file con path passato
@@ -219,8 +221,10 @@ public class Advertisement {
 	public static JavaPairRDD<Long, Double> calcolaUtilita(Double alpha) {
 		System.out.println("Inizio calcolo Utilità");
 		JavaPairRDD<Long, Double> centralita = calcolaCentralita();
-		return centralita.mapToPair(f -> new Tuple2<Long, Double>((Long) f._1(),
-				alpha * mappaAffinita.get((Long) f._1()) + (1 - alpha) * f._2()));
+		return centralita.mapToPair(f -> {
+			Double value = alpha * mappaAffinita.get((Long) f._1()) + (1 - alpha) * f._2();
+			return new Tuple2<Long, Double>((Long) f._1(), value);
+		});
 	}
 
 	/**
@@ -268,13 +272,26 @@ public class Advertisement {
 		return risultato;
 	}
 
+	public static void stampaNodi(List<Tuple2<Long, Double>> listaVertici) {
+		int i=1;
+		for (Tuple2<Long, Double> vertice : listaVertici) {
+			if (vertice._2() < soglia) {
+				System.out.println("Non ci sono più elementi sopra la soglia!");
+				break;
+			} else {
+				System.out.println(i+") "+vertice._1() + ": " + vertice._2());
+				i++;
+			}
+		}
+	}
+
 	public static void main(String[] args) {
 		/* Configurazione di Spark e dei file */
 		mappaFile.put(1, "grande-abbastanza.txt");
 		mappaFile.put(2, "grande.txt");
 		mappaFile.put(3, "medio.txt");
 		mappaFile.put(4, "piccolo.txt");
-		tipologiaGrafo = 1;
+		tipologiaGrafo = 2; /* Scelta del grafo */
 		System.setProperty("hadoop.home.dir", "C:\\Hadoop");
 		SparkConf conf = new SparkConf().setAppName("Advertisement").setMaster("local[*]")
 				.set("spark.driver.cores", "4").set("spark.driver.memory", "4g");
@@ -309,9 +326,8 @@ public class Advertisement {
 			e.printStackTrace();
 		}
 		System.out.println("Primi " + k + " rispetto ad Affinità");
-		System.out
-				.println(sortByValue(mappaAffinita).subList(0, (k > mappaAffinita.size() ? mappaAffinita.size() : k)));
+		stampaNodi(sortByValue(mappaAffinita).subList(0, (k > mappaAffinita.size() ? mappaAffinita.size() : k)));
 		System.out.println("Primi " + k + " rispetto ad Utilità");
-		System.out.println(risultato);
+		stampaNodi(risultato);
 	}
 }
