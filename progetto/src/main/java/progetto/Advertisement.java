@@ -273,7 +273,7 @@ public class Advertisement {
 		JavaPairRDD<Double, Long> risultatoSwaped = risultato.mapToPair(x -> x.swap());
 		risultatoSwaped = risultatoSwaped.sortByKey(false); /* false: ordine decrescente */
 		JavaPairRDD<Long, Double> risultatoFinale = risultatoSwaped.mapToPair(x -> x.swap());
-		System.out.println("\t*Ordinamento completato");
+		System.out.println("\t*Ordinamento completato, estrazione dei primi " + k);
 		return risultatoFinale.take(k);
 
 	}
