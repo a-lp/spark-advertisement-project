@@ -15,8 +15,9 @@ import java.util.Map;
 import java.util.Random;
 import java.util.Scanner;
 import java.util.Set;
-import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicLong;
 
+import org.apache.commons.lang.ArrayUtils;
 import org.apache.spark.SparkConf;
 import org.apache.spark.api.java.JavaPairRDD;
 import org.apache.spark.api.java.JavaRDD;
@@ -29,6 +30,8 @@ import org.apache.spark.graphx.Graph;
 import org.apache.spark.graphx.GraphOps;
 import org.apache.spark.graphx.VertexRDD;
 import org.apache.spark.storage.StorageLevel;
+
+import com.google.common.util.concurrent.AtomicDouble;
 
 import scala.Tuple2;
 import scala.reflect.ClassTag;
@@ -46,9 +49,10 @@ public class Advertisement {
 	public static FileWriter fw;
 	/* Strutture di supporto */
 	public static Graph<Long, Long> grafo;
+	public static GraphOps<Long, Long> graphOps;
 	public static List<Integer> vertici_archi = new ArrayList<Integer>(); /* 0: Numero vertici, 1: Numero archi */
 	public static Map<Long, Double> mappaAffinita = new HashMap<Long, Double>();
-	public static VertexRDD<long[]> mappaVicini;
+	public static Map<Long, Long[]> mappaVicini;
 	public static JavaPairRDD<Long, Double> mappaUtilita;
 	public static Map<Integer, String> mappaFile = new HashMap<Integer, String>();
 	public static List<Long> listaVertici = new ArrayList<Long>();
@@ -80,7 +84,7 @@ public class Advertisement {
 		 */
 		JavaRDD<String> file = jsc.textFile(path).filter(f -> !f.startsWith("#"));
 		JavaRDD<Edge<Long>> archi = file.map(f -> {
-			if (f != null) {
+			if (f != null && f.length() > 0) {
 				String[] vertici = f.split(" "); // ^([0-9]+)
 				return new Edge<Long>(Long.parseLong(vertici[0]), Long.parseLong(vertici[1]), null);
 			}
@@ -90,17 +94,18 @@ public class Advertisement {
 		EdgeRDD<Long> pairsEdgeRDD = EdgeRDD.fromEdges(archi.rdd(), longTag, longTag);
 		grafo = Graph.fromEdges(pairsEdgeRDD, null, StorageLevel.MEMORY_AND_DISK_SER(),
 				StorageLevel.MEMORY_AND_DISK_SER(), longTag, longTag);
-		System.out.println("\t*Grafo caricato, memorizzazione dei nodi adiacenti su mappa.");
+		System.out.println("\t*Grafo caricato");
 
-		GraphOps<Long, Long> graphOps = Graph.graphToGraphOps(grafo, grafo.vertices().vdTag(),
-				grafo.vertices().vdTag());
+		graphOps = Graph.graphToGraphOps(grafo, grafo.vertices().vdTag(), grafo.vertices().vdTag());
 
 		/*
 		 * Memorizzo i le liste di adiacenza di ogni nodo in una variabile globale
 		 * statica.
 		 */
 		System.out.println("\t*Caricamento mappa vicini.");
-		mappaVicini = graphOps.collectNeighborIds(EdgeDirection.Either());
+		mappaVicini = graphOps.collectNeighborIds(EdgeDirection.Either()).toJavaRDD().mapToPair(s -> {
+			return new Tuple2<Long, Long[]>((Long) s._1(), ArrayUtils.toObject(s._2()));
+		}).collectAsMap();
 		if (creaAffinita) {
 			System.out.println("\t\t*Creazione Affinità");
 			creaAffinita();
@@ -158,9 +163,8 @@ public class Advertisement {
 		jsc.setLogLevel("INFO");
 		Random random = new Random();
 		Set<Long> inseriti = new HashSet<Long>();
-		Double valore_src, valore_adj;
-		String fileText;
-		Long vertice_src, vertice_adj;
+		AtomicDouble valore_src = new AtomicDouble(0.0), valore_adj = new AtomicDouble(0.0);
+		AtomicLong vertice_src = new AtomicLong(0), vertice_adj = new AtomicLong(0);
 		try {
 			fw = new FileWriter("src/main/resources/affinita-" + mappaFile.get(tipologiaGrafo), false);
 			/*
@@ -168,41 +172,38 @@ public class Advertisement {
 			 * valutato in precedenza, quindi genero un valore Double casuale e lo memorizzo
 			 * su file.
 			 */
-			for (Tuple2<Object, long[]> tupla : mappaVicini.toJavaRDD().collect()) {
-				vertice_src = (Long) tupla._1();
-				valore_src = random.nextDouble() * .79;
-				if (!inseriti.contains(vertice_src)) {
-					inseriti.add(vertice_src);
-					fileText = vertice_src + " " + valore_src + "\n";
-					fw.write(fileText);
+			grafo.vertices().toJavaRDD().foreach(tupla -> {
+				vertice_src.set((long) tupla._1());
+				valore_src.set(random.nextDouble() * .79);
+				if (!inseriti.contains(vertice_src.get())) {
+					inseriti.add(vertice_src.get());
+					fw.write(vertice_src.get() + " " + valore_src.get() + "\n");
 				}
 				/*
 				 * Controllo i nodi adiacenti del nodo estratto in precedenza. Per ognuno di
 				 * essi ripeto la procedura di inserimento su file, controllando che non siano
 				 * già stati inseriti nell'insieme di vertici già valutati.
 				 */
-				List<Long> vicini = new ArrayList<>();
-				Arrays.stream(tupla._2()).forEach(element -> vicini.add(element));
-				Collections.shuffle(vicini);
-				for (int i = 0; i < vicini.size(); i++) {
-					vertice_adj = vicini.get(i);
-					if (!inseriti.contains(vertice_adj)) {
-						inseriti.add(vertice_adj);
+				Long[] vicini = mappaVicini.get(vertice_src.get());
+				for (int i = 0; i < vicini.length; i++) {
+					vertice_adj.set(vicini[i]);
+					if (!inseriti.contains(vertice_adj.get())) {
+						inseriti.add(vertice_adj.get());
 						/*
 						 * Il valore di affinità viene calcolato a partire dal valore del nodo
 						 * principale, sommando o sottraendo un valore casuale preso in percentuale al
 						 * minimo valore tra 0.2 o (1-valore_src), per evitare di andare oltre l'1.
 						 */
-						if (i < vicini.size() * .3) {
-							valore_adj = valore_src + ((random.nextBoolean() ? 1 : -1) * random.nextDouble() * 0.2);
+						if (i < vicini.length * .3) {
+							valore_adj.set(
+									valore_src.get() + ((random.nextBoolean() ? 1 : -1) * random.nextDouble() * 0.2));
 						} else {
-							valore_adj = valore_src + (-1 * random.nextDouble() * (valore_src * .7));
+							valore_adj.set(valore_src.get() + (-1 * random.nextDouble() * (valore_src.get() * .7)));
 						}
-						fileText = vertice_adj + " " + valore_adj + "\n";
-						fw.write(fileText);
+						fw.write(vertice_adj.get() + " " + valore_adj.get() + "\n");
 					}
 				}
-			}
+			});
 			fw.close();
 			jsc.setLogLevel("ERROR");
 		} catch (IOException e) {
@@ -221,18 +222,19 @@ public class Advertisement {
 	 */
 	public static JavaPairRDD<Long, Double> calcolaCentralita() {
 		System.out.println("\t\t*Inizio calcolo centralità");
-		JavaPairRDD<Long, Double> centralita = mappaVicini.toJavaRDD().mapToPair(f -> {
+		JavaPairRDD<Long, Double> centralita = grafo.vertices().toJavaRDD().mapToPair(f -> {
 			Double p = 0.0;
 			/*
 			 * Per ogni vertice adiacente al nodo, sommo i rispettivi valori di affinita.
 			 */
-			for (int i = 0; i < f._2().length; i++)
-				p += mappaAffinita.get(f._2()[i]);
+			Long[] vicinato = mappaVicini.get((Long) f._1());
+			for (int i = 0; i < vicinato.length; i++)
+				p += mappaAffinita.get(vicinato[i]);
 			/*
 			 * Restituisco la coppia contenente l'id del vertice e la centralità calcolata
 			 * come p^2/(#nodi_adiacenti)^2.
 			 */
-			return new Tuple2<Long, Double>((Long) f._1(), (p * p) / (f._2().length * f._2().length));
+			return new Tuple2<Long, Double>((Long) f._1(), (p * p) / (vicinato.length * vicinato.length));
 		});
 		/*
 		 * Restituisco la struttura dati contenente le coppie dei nodi con i valori di
@@ -312,9 +314,9 @@ public class Advertisement {
 	 * Funzione per la stampa e la conta dei nodi le cui affinità che superano una
 	 * certa soglia. Tra i nodi coinvolti consideriamo anche i nodi adiacenti.
 	 * 
-	 * @param listaVertici Lista ordinata di vertici da stampare.
+	 * @param verticiDaVisitare Lista ordinata di vertici da stampare.
 	 */
-	public static long contaNodi(List<Long> listaVertici) {
+	public static long contaNodi(List<Long> verticiDaVisitare) {
 		System.out.println("\t*Conta dei nodi");
 		/* Insieme di vertici non ripetuti */
 		Set<Long> inseriti = new HashSet<Long>();
@@ -322,16 +324,12 @@ public class Advertisement {
 		 * Memorizza in hash le liste di adiacenze
 		 */
 		System.out.println("\t\t*Caricamento dei vicini per i vertici in lista");
-		Map<Long, long[]> hashVicini = mappaVicini.toJavaRDD().filter(f -> listaVertici.contains((Long) f._1()))
-				.mapToPair(s -> {
-					return new Tuple2<Long, long[]>((Long) s._1(), s._2());
-				}).collectAsMap();
 		long i = 1, risultato = 0;
 		/*
 		 * Scorro tutti gli elementi della lista passata a parametro
 		 */
 		System.out.println("\t\t*Scorrimento nodi");
-		for (Long vertice : listaVertici) {
+		for (Long vertice : verticiDaVisitare) {
 			/*
 			 * Se l'elemento supera la soglia, lo conto e stampo, il valore di affinità
 			 * altrimenti stampo un messaggio di notifica.
@@ -344,7 +342,7 @@ public class Advertisement {
 				System.out.println("\t" + i + ") " + vertice + ": Soglia non superata!");
 			}
 			/* Controllo se l'affinità dei suoi vicini è maggiore della soglia */
-			long[] vicini = hashVicini.get(vertice);
+			Long[] vicini = mappaVicini.get(vertice);
 			for (int j = 0; j < vicini.length; j++) {
 				/*
 				 * Stampo e conto solamente gli elementi la cui affinità supera la soglia
@@ -400,18 +398,26 @@ public class Advertisement {
 
 			@Override
 			public void call(Tuple2<Object, Long> t) throws Exception {
-				listaVertici.add((Long) t._1());
+				if (listaVertici.size() < k && new Random().nextBoolean())
+					listaVertici.add((Long) t._1());
 			}
 		});
-		Collections.shuffle(listaVertici);
-		List<Long> risultato = new ArrayList<Long>();
-		listaVertici.subList(0, k).forEach(e -> {
-			risultato.add(e);
-		});
-		casuale = contaNodi(risultato);
+//		Set<Long> insieme = new HashSet<Long>();
+//		int i = 1;
+//		System.out.println("\t*Caricamento casuale dei vertici");
+//		while (insieme.size() < k) {
+//			long tmp = random.nextLong() % (vertici_archi.get(0)); // graphOps.pickRandomVertex();
+//			tmp = tmp > 0 ? tmp : -tmp;
+//			if (!insieme.contains(tmp)) {
+//				insieme.add(tmp);
+//				risultato.add(tmp);
+//			}
+//		}
+		System.out.println(listaVertici);
+		casuale = contaNodi(listaVertici);
 		elapsedTime = (System.currentTimeMillis() - previousTime) / 1000.0;
 		System.out.println("Tempo di esecuzione :" + elapsedTime);
-		System.out.println("********************************3" + "****");
+		System.out.println("************************************");
 		/****************** Risultato finale ******************/
 		System.out.println("Nodi trovati per affinità: " + affinita);
 		System.out.println("Nodi trovati per utilità: " + utilita);
