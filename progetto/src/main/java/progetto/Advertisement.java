@@ -68,7 +68,7 @@ public class Advertisement {
 		/*
 		 * Caricamento del grafo a partire dal file passato a parametro.
 		 */
-		System.out.println("\tInizio lettura grafo da file");
+		System.out.println("\t*Inizio lettura grafo da file");
 		/*
 		 * Leggo il numero di vertici e archi dal file, nelle righe con "#".
 		 */
@@ -89,7 +89,7 @@ public class Advertisement {
 		EdgeRDD<Long> pairsEdgeRDD = EdgeRDD.fromEdges(archi.rdd(), longTag, longTag);
 		grafo = Graph.fromEdges(pairsEdgeRDD, null, StorageLevel.MEMORY_AND_DISK_SER(),
 				StorageLevel.MEMORY_AND_DISK_SER(), longTag, longTag);
-		System.out.println("\tGrafo caricato, memorizzazione dei nodi adiacenti su mappa.");
+		System.out.println("\t*Grafo caricato, memorizzazione dei nodi adiacenti su mappa.");
 
 		GraphOps<Long, Long> graphOps = Graph.graphToGraphOps(grafo, grafo.vertices().vdTag(),
 				grafo.vertices().vdTag());
@@ -98,18 +98,18 @@ public class Advertisement {
 		 * Memorizzo i le liste di adiacenza di ogni nodo in una variabile globale
 		 * statica.
 		 */
-		System.out.println("\tCaricamento mappa vicini.");
+		System.out.println("\t*Caricamento mappa vicini.");
 		mappaVicini = graphOps.collectNeighborIds(EdgeDirection.Either());
 		if (creaAffinita) {
-			System.out.println("\tCreazione Affinità");
+			System.out.println("\t\t*Creazione Affinità");
 			creaAffinita();
-			System.out.println("\tAffinità Create");
+			System.out.println("\t\t*Affinità Create");
 		}
 		/*
 		 * Leggo i valori di affinità presenti nel file generato da creaAffinita, quindi
 		 * le inserisco in una HashMap per potervi accedere in tempo costante.
 		 */
-		System.out.println("\tCaricamento mappa affinità.");
+		System.out.println("\t*Caricamento mappa affinità.");
 		JavaRDD<String> affinitaTesto = jsc.textFile("src/main/resources/affinita-" + mappaFile.get(tipologiaGrafo));
 		mappaAffinita = affinitaTesto.mapToPair(s -> {
 			Long id_vertex = Long.parseLong(s.split(" ")[0]); /* Chiave */
@@ -154,6 +154,7 @@ public class Advertisement {
 	 * 
 	 */
 	public static void creaAffinita() {
+		jsc.setLogLevel("INFO");
 		Random random = new Random();
 		Set<Long> inseriti = new HashSet<Long>();
 		Double valore_src, valore_adj;
@@ -202,9 +203,11 @@ public class Advertisement {
 				}
 			}
 			fw.close();
+			jsc.setLogLevel("ERROR");
 		} catch (IOException e) {
 			System.out.println("Errore apertura file");
 			e.printStackTrace();
+			jsc.setLogLevel("ERROR");
 		}
 	}
 
@@ -266,9 +269,11 @@ public class Advertisement {
 	 */
 	public static List<Tuple2<Long, Double>> KMigliori(int k) {
 		JavaPairRDD<Long, Double> risultato = calcolaUtilita(.5);
+		System.out.println("\t*Ordinamento dei risultati");
 		JavaPairRDD<Double, Long> risultatoSwaped = risultato.mapToPair(x -> x.swap());
 		risultatoSwaped = risultatoSwaped.sortByKey(false); /* false: ordine decrescente */
 		JavaPairRDD<Long, Double> risultatoFinale = risultatoSwaped.mapToPair(x -> x.swap());
+		System.out.println("\t*Ordinamento completato");
 		return risultatoFinale.take(k);
 
 	}
@@ -308,6 +313,7 @@ public class Advertisement {
 	 * @param listaVertici Lista ordinata di vertici da stampare.
 	 */
 	public static long contaNodi(List<Tuple2<Long, Double>> listaVertici) {
+		System.out.println("\t*Conta dei nodi");
 		/* Insieme di vertici non ripetuti */
 		Set<Long> inseriti = new HashSet<Long>();
 		/*
