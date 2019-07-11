@@ -74,6 +74,7 @@ public class Advertisement {
 		 */
 		JavaRDD<String> header = jsc.textFile(path).filter(f -> f.startsWith("#"));
 		header.collect().stream().forEach(e -> vertici_archi.add(Integer.parseInt(e.replace("#", ""))));
+		k = Math.min(k, vertici_archi.get(0));
 		/*
 		 * Lettura degli archi da file.
 		 */
@@ -285,6 +286,7 @@ public class Advertisement {
 	 * @return Mappa ordinata e convertita in List
 	 */
 	public static List<Tuple2<Long, Double>> ordinaPerValore(Map<Long, Double> hm) {
+		System.out.println("\t*Ordinamento dei vertici per affinità");
 		// Create a list from elements of HashMap
 		List<Map.Entry<Long, Double>> list = new LinkedList<Map.Entry<Long, Double>>(hm.entrySet());
 
@@ -312,34 +314,37 @@ public class Advertisement {
 	 * 
 	 * @param listaVertici Lista ordinata di vertici da stampare.
 	 */
-	public static long contaNodi(List<Tuple2<Long, Double>> listaVertici) {
+	public static long contaNodi(List<Long> listaVertici) {
 		System.out.println("\t*Conta dei nodi");
 		/* Insieme di vertici non ripetuti */
 		Set<Long> inseriti = new HashSet<Long>();
 		/*
 		 * Memorizza in hash le liste di adiacenze
 		 */
-		Map<Long, long[]> hashVicini = mappaVicini.toJavaRDD().mapToPair(s -> {
-			return new Tuple2<Long, long[]>((Long) s._1(), s._2());
-		}).collectAsMap();
+		System.out.println("\t\t*Caricamento dei vicini per i vertici in lista");
+		Map<Long, long[]> hashVicini = mappaVicini.toJavaRDD().filter(f -> listaVertici.contains((Long) f._1()))
+				.mapToPair(s -> {
+					return new Tuple2<Long, long[]>((Long) s._1(), s._2());
+				}).collectAsMap();
 		long i = 1, risultato = 0;
 		/*
 		 * Scorro tutti gli elementi della lista passata a parametro
 		 */
-		for (Tuple2<Long, Double> vertice : listaVertici) {
+		System.out.println("\t\t*Scorrimento nodi");
+		for (Long vertice : listaVertici) {
 			/*
 			 * Se l'elemento supera la soglia, lo conto e stampo, il valore di affinità
 			 * altrimenti stampo un messaggio di notifica.
 			 */
-			if (vertice._2() >= soglia && !inseriti.contains(vertice._1())) {
-				inseriti.add(vertice._1());
-				System.out.println("\t" + i + ") " + vertice._1() + ": " + vertice._2());
+			if (mappaAffinita.get(vertice) >= soglia && !inseriti.contains(vertice)) {
+				inseriti.add(vertice);
+				System.out.println("\t" + i + ") " + vertice + ": " + mappaAffinita.get(vertice));
 				risultato++;
 			} else {
-				System.out.println("\t" + i + ") " + vertice._1() + ": Soglia non superata!");
+				System.out.println("\t" + i + ") " + vertice + ": Soglia non superata!");
 			}
 			/* Controllo se l'affinità dei suoi vicini è maggiore della soglia */
-			long[] vicini = hashVicini.get(vertice._1());
+			long[] vicini = hashVicini.get(vertice);
 			for (int j = 0; j < vicini.length; j++) {
 				/*
 				 * Stampo e conto solamente gli elementi la cui affinità supera la soglia
@@ -359,6 +364,7 @@ public class Advertisement {
 		/****************** Configurazione ******************/
 		long affinita, utilita, casuale, previousTime;
 		double elapsedTime;
+		List<Tuple2<Long, Double>> topElementi;
 		/* Configurazione di Spark e dei file */
 		configuraParametri();
 		/* Caricamento del grafo in memoria */
@@ -366,18 +372,22 @@ public class Advertisement {
 		/****************** Esecuzione Utilità ******************/
 		System.out.println("Primi " + k + " rispetto ad Utilità");
 		previousTime = System.currentTimeMillis();
-		List<Tuple2<Long, Double>> risultato = KMigliori((k <= (vertici_archi.get(0)) ? k : vertici_archi.get(0)));
-		utilita = contaNodi(risultato);
+		topElementi = KMigliori((k <= (vertici_archi.get(0)) ? k : vertici_archi.get(0)));
+		topElementi.stream().forEach(e -> listaVertici.add(e._1()));
+		utilita = contaNodi(listaVertici);
 		elapsedTime = (System.currentTimeMillis() - previousTime) / 1000.0;
 		System.out.println("Tempo di esecuzione :" + elapsedTime);
+		listaVertici.clear();
 		/****************** Esecuzione Utilità ******************/
 		System.out.println("************************************");
 		System.out.println("Primi " + k + " rispetto ad Affinità");
 		previousTime = System.currentTimeMillis();
-		affinita = contaNodi(
-				ordinaPerValore(mappaAffinita).subList(0, (k > mappaAffinita.size() ? mappaAffinita.size() : k)));
+		topElementi = ordinaPerValore(mappaAffinita).subList(0, (k > mappaAffinita.size() ? mappaAffinita.size() : k));
+		topElementi.stream().forEach(e -> listaVertici.add(e._1()));
+		affinita = contaNodi(listaVertici);
 		elapsedTime = (System.currentTimeMillis() - previousTime) / 1000.0;
 		System.out.println("Tempo di esecuzione :" + elapsedTime);
+		listaVertici.clear();
 		/****************** Esecuzione Casuale ******************/
 		/*
 		 * Genero una lista di vertici casuali per confrontarla con le altre liste
@@ -394,14 +404,14 @@ public class Advertisement {
 			}
 		});
 		Collections.shuffle(listaVertici);
-		List<Tuple2<Long, Double>> listaCasuale = new ArrayList<Tuple2<Long, Double>>();
-		listaVertici.subList(0, k).stream().forEach(elemento -> {
-			listaCasuale.add(new Tuple2<Long, Double>(elemento, mappaAffinita.get(elemento)));
+		List<Long> risultato = new ArrayList<Long>();
+		listaVertici.subList(0, k).forEach(e -> {
+			risultato.add(e);
 		});
-		casuale = contaNodi(listaCasuale);
+		casuale = contaNodi(risultato);
 		elapsedTime = (System.currentTimeMillis() - previousTime) / 1000.0;
 		System.out.println("Tempo di esecuzione :" + elapsedTime);
-		System.out.println("************************************");
+		System.out.println("********************************3" + "****");
 		/****************** Risultato finale ******************/
 		System.out.println("Nodi trovati per affinità: " + affinita);
 		System.out.println("Nodi trovati per utilità: " + utilita);
