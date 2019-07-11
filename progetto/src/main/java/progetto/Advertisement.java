@@ -35,10 +35,11 @@ import scala.reflect.ClassTag;
 
 public class Advertisement {
 	/* Parametri di configurazione */
-	public static String numeroCore = "4"; /* Numero di core per l'esecuzione */
-	public static Integer tipologiaGrafo = 3; /* Dimensione del grafo */
-	public static Double soglia = .5; /* Soglia di accettazione */
-	public static int k = 10; /* Numero di nodi da cercare */
+	public static String numeroCore; /* Numero di core per l'esecuzione */
+	public static Integer tipologiaGrafo; /* Dimensione del grafo */
+	public static Double soglia; /* Soglia di accettazione */
+	public static int k; /* Numero di nodi da cercare */
+	public static Boolean creaNuoveAffinita; /* Crea nuove affinità */
 	/* Altre variabili */
 	public final static Double INFINITY = Double.MAX_VALUE;
 	public static JavaSparkContext jsc;
@@ -63,14 +64,20 @@ public class Advertisement {
 	 * @param creaAffinita Parametro Boolean per creare il file di affinita
 	 */
 	public static void caricaGrafo(String path, Boolean creaAffinita) {
+		System.out.println("****************** Caricamento Grafo ******************");
 		/*
 		 * Caricamento del grafo a partire dal file passato a parametro.
 		 */
-		System.out.println("Inizio lettura grafo da file");
-		JavaRDD<String> file = jsc.textFile(path).filter(f -> !f.startsWith("#"));
-		/* Leggo il numero di vertici e archi dal file, nelle righe con "#" */
+		System.out.println("\tInizio lettura grafo da file");
+		/*
+		 * Leggo il numero di vertici e archi dal file, nelle righe con "#".
+		 */
 		JavaRDD<String> header = jsc.textFile(path).filter(f -> f.startsWith("#"));
 		header.collect().stream().forEach(e -> vertici_archi.add(Integer.parseInt(e.replace("#", ""))));
+		/*
+		 * Lettura degli archi da file.
+		 */
+		JavaRDD<String> file = jsc.textFile(path).filter(f -> !f.startsWith("#"));
 		JavaRDD<Edge<Long>> archi = file.map(f -> {
 			if (f != null) {
 				String[] vertici = f.split(" "); // ^([0-9]+)
@@ -82,9 +89,8 @@ public class Advertisement {
 		EdgeRDD<Long> pairsEdgeRDD = EdgeRDD.fromEdges(archi.rdd(), longTag, longTag);
 		grafo = Graph.fromEdges(pairsEdgeRDD, null, StorageLevel.MEMORY_AND_DISK_SER(),
 				StorageLevel.MEMORY_AND_DISK_SER(), longTag, longTag);
-		System.out.println("Grafo caricato, memorizzazione dei nodi adiacenti su mappa.");
+		System.out.println("\tGrafo caricato, memorizzazione dei nodi adiacenti su mappa.");
 
-		/* GraphOps è una classe di utilità sui Grafi */
 		GraphOps<Long, Long> graphOps = Graph.graphToGraphOps(grafo, grafo.vertices().vdTag(),
 				grafo.vertices().vdTag());
 
@@ -92,15 +98,18 @@ public class Advertisement {
 		 * Memorizzo i le liste di adiacenza di ogni nodo in una variabile globale
 		 * statica.
 		 */
-		System.out.println("Caricamento mappa vicini.");
+		System.out.println("\tCaricamento mappa vicini.");
 		mappaVicini = graphOps.collectNeighborIds(EdgeDirection.Either());
-		if (creaAffinita)
+		if (creaAffinita) {
+			System.out.println("\tCreazione Affinità");
 			creaAffinita();
+			System.out.println("\tAffinità Create");
+		}
 		/*
 		 * Leggo i valori di affinità presenti nel file generato da creaAffinita, quindi
 		 * le inserisco in una HashMap per potervi accedere in tempo costante.
 		 */
-		System.out.println("Caricamento mappa affinità.");
+		System.out.println("\tCaricamento mappa affinità.");
 		JavaRDD<String> affinitaTesto = jsc.textFile("src/main/resources/affinita-" + mappaFile.get(tipologiaGrafo));
 		mappaAffinita = affinitaTesto.mapToPair(s -> {
 			Long id_vertex = Long.parseLong(s.split(" ")[0]); /* Chiave */
@@ -108,7 +117,7 @@ public class Advertisement {
 
 			return new Tuple2<Long, Double>(id_vertex, value);
 		}).collectAsMap();
-		System.out.println("Caricamento grafo completato.");
+		System.out.println("****************** Fine Caricamento Grafo ******************");
 	}
 
 	/**
@@ -207,7 +216,7 @@ public class Advertisement {
 	 *         centralità.
 	 */
 	public static JavaPairRDD<Long, Double> calcolaCentralita() {
-		System.out.println("Inizio calcolo centralità");
+		System.out.println("\t\t*Inizio calcolo centralità");
 		JavaPairRDD<Long, Double> centralita = mappaVicini.toJavaRDD().mapToPair(f -> {
 			Double p = 0.0;
 			/*
@@ -225,7 +234,7 @@ public class Advertisement {
 		 * Restituisco la struttura dati contenente le coppie dei nodi con i valori di
 		 * centralità.
 		 */
-		System.out.println("Fine calcolo centralità");
+		System.out.println("\t\t*Fine calcolo centralità");
 		return centralita;
 	}
 
@@ -238,7 +247,7 @@ public class Advertisement {
 	 *         nodo.
 	 */
 	public static JavaPairRDD<Long, Double> calcolaUtilita(Double alpha) {
-		System.out.println("Inizio calcolo Utilità");
+		System.out.println("\t*Inizio calcolo Utilità");
 		JavaPairRDD<Long, Double> centralita = calcolaCentralita();
 		return centralita.mapToPair(f -> {
 			Double value = alpha * mappaAffinita.get((Long) f._1()) + (1 - alpha) * f._2();
@@ -341,33 +350,36 @@ public class Advertisement {
 	}
 
 	public static void main(String[] args) {
+		/****************** Configurazione ******************/
+		long affinita, utilita, casuale, previousTime;
+		double elapsedTime;
 		/* Configurazione di Spark e dei file */
 		configuraParametri();
 		/* Caricamento del grafo in memoria */
-		caricaGrafo("src/main/resources/grafo-" + mappaFile.get(tipologiaGrafo), true);
-		/* Esecuzione */
-		System.out.println("Calcolo dei migliori K");
-		long previousTime = System.currentTimeMillis();
-		/*
-		 * Verifico che il numero di nodi sia maggiore o uguale a k.
-		 */
+		caricaGrafo("src/main/resources/grafo-" + mappaFile.get(tipologiaGrafo), creaNuoveAffinita);
+		/****************** Esecuzione Utilità ******************/
+		System.out.println("Primi " + k + " rispetto ad Utilità");
+		previousTime = System.currentTimeMillis();
 		List<Tuple2<Long, Double>> risultato = KMigliori((k <= (vertici_archi.get(0)) ? k : vertici_archi.get(0)));
-		double elapsedTime = (System.currentTimeMillis() - previousTime) / 1000.0;
-
-		/* Stampa dei risultati */
+		utilita = contaNodi(risultato);
+		elapsedTime = (System.currentTimeMillis() - previousTime) / 1000.0;
 		System.out.println("Tempo di esecuzione :" + elapsedTime);
-
-		long affinita, utilita, casuale;
+		/****************** Esecuzione Utilità ******************/
+		System.out.println("************************************");
 		System.out.println("Primi " + k + " rispetto ad Affinità");
+		previousTime = System.currentTimeMillis();
 		affinita = contaNodi(
 				ordinaPerValore(mappaAffinita).subList(0, (k > mappaAffinita.size() ? mappaAffinita.size() : k)));
-		System.out.println("Primi " + k + " rispetto ad Utilità");
-		utilita = contaNodi(risultato);
+		elapsedTime = (System.currentTimeMillis() - previousTime) / 1000.0;
+		System.out.println("Tempo di esecuzione :" + elapsedTime);
+		/****************** Esecuzione Casuale ******************/
 		/*
 		 * Genero una lista di vertici casuali per confrontarla con le altre liste
 		 * ordinate per affinità e utilità
 		 */
-
+		System.out.println("************************************");
+		System.out.println("Primi " + k + " rispetto a Casualità");
+		previousTime = System.currentTimeMillis();
 		grafo.vertices().toJavaRDD().foreach(new VoidFunction<Tuple2<Object, Long>>() {
 
 			@Override
@@ -380,8 +392,11 @@ public class Advertisement {
 		listaVertici.subList(0, k).stream().forEach(elemento -> {
 			listaCasuale.add(new Tuple2<Long, Double>(elemento, mappaAffinita.get(elemento)));
 		});
-		System.out.println("Primi " + k + " rispetto ad Casualità");
 		casuale = contaNodi(listaCasuale);
+		elapsedTime = (System.currentTimeMillis() - previousTime) / 1000.0;
+		System.out.println("Tempo di esecuzione :" + elapsedTime);
+		System.out.println("************************************");
+		/****************** Risultato finale ******************/
 		System.out.println("Nodi trovati per affinità: " + affinita);
 		System.out.println("Nodi trovati per utilità: " + utilita);
 		System.out.println("Nodi trovati per lista casuale: " + casuale);
@@ -389,6 +404,7 @@ public class Advertisement {
 	}
 
 	private static void configuraParametri() {
+		System.out.println("****************** Configurazione ******************");
 		Scanner input = new Scanner(System.in);
 		System.out.println("Inserire tipologia di grafo (Default: 2)");
 		System.out.println("1) Nodi: 6726011\n   Archi: 19360690");
@@ -399,38 +415,45 @@ public class Advertisement {
 		} catch (Exception e) {
 			System.out.println("** Valore di Default **");
 			tipologiaGrafo = 3;
-			input.nextLine();
 		}
+		input = new Scanner(System.in);
 		System.out.println("Inserire soglia (Default: 0,7)");
 		try {
 			soglia = input.nextDouble();
 		} catch (Exception e) {
 			System.out.println("** Valore di Default **");
-			soglia = .5;
-			input.nextLine();
+			soglia = .7;
 		}
+		input = new Scanner(System.in);
 		System.out.println("Inserire numero di nodi da ricercare (Default: 10)");
 		try {
 			k = input.nextInt();
 		} catch (Exception e) {
 			System.out.println("** Valore di Default **");
 			k = 10;
-			input.nextLine();
 		}
+		input = new Scanner(System.in);
 		System.out.println("Inserire numero di core (1|4) (Default: 4)");
 		try {
 			numeroCore = "" + input.nextInt();
 		} catch (Exception e) {
 			System.out.println("** Valore di Default **");
 			numeroCore = "4";
-			input.nextLine();
 		}
-		input.close();
-		System.out.println("Parametri scelti:");
-		System.out.println("Tipologia: " + tipologiaGrafo);
-		System.out.println("Numero di nodi k: " + k);
-		System.out.println("Soglia: " + soglia);
-		System.out.println("Numero di core: " + numeroCore);
+		input = new Scanner(System.in);
+		System.out.println("Creare nuove affinità? S/N (Default: N)");
+		try {
+			creaNuoveAffinita = input.nextLine().equals("S") ? true : false;
+		} catch (Exception e) {
+			System.out.println("** Valore di Default **");
+			numeroCore = "4";
+		}
+		System.out.println("\tParametri scelti:");
+		System.out.println("\tTipologia: " + tipologiaGrafo);
+		System.out.println("\tNumero di nodi k: " + k);
+		System.out.println("\tSoglia: " + soglia);
+		System.out.println("\tNumero di core: " + numeroCore);
+		System.out.println("\tCreare nuova affinità?: " + creaNuoveAffinita);
 		mappaFile.put(1, "grande-abbastanza.txt");
 		mappaFile.put(2, "grande.txt");
 		mappaFile.put(3, "medio.txt");
@@ -440,6 +463,6 @@ public class Advertisement {
 				.set("spark.driver.cores", numeroCore).set("spark.driver.memory", "4g");
 		jsc = new JavaSparkContext(conf);
 		jsc.setLogLevel("ERROR");
-
+		System.out.println("****************** Fine Configurazione ******************");
 	}
 }
