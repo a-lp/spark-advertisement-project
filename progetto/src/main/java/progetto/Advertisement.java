@@ -32,8 +32,8 @@ import scala.reflect.ClassTag;
 
 public class Advertisement {
 	/* Parametri di configurazione */
-	public static String numeroCore = "4"; /* Numero di core per l'esecuzione */
-	public static Integer tipologiaGrafo = 3; /* Dimensione del grafo */
+	public static String numeroCore = "1"; /* Numero di core per l'esecuzione */
+	public static Integer tipologiaGrafo = 1; /* Dimensione del grafo */
 	public static Double soglia = .8; /* Soglia di accettazione */
 	/* Strutture di supporto */
 	public final static Double INFINITY = Double.MAX_VALUE;
@@ -149,7 +149,8 @@ public class Advertisement {
 			 */
 			for (Tuple2<Object, long[]> tupla : mappaVicini.toJavaRDD().collect()) {
 				vertice_src = (Long) tupla._1();
-				valore_src = random.nextDouble();
+				valore_src = random
+						.nextDouble(); /* TODO: mettere un livello massimo di affinità ed evitare valori troppo alti */
 				if (!inseriti.contains(vertice_src)) {
 					inseriti.add(vertice_src);
 					fileText = vertice_src + " " + valore_src + "\n";
@@ -159,6 +160,10 @@ public class Advertisement {
 				 * Controllo i nodi adiacenti del nodo estratto in precedenza. Per ognuno di
 				 * essi ripeto la procedura di inserimento su file, controllando che non siano
 				 * già stati inseriti nell'insieme di vertici già valutati.
+				 */
+				/*
+				 * TODO: considerare il 20-30% di questi con affinità vicina al nodo sorgente,
+				 * mentre i restanti devono avere affinità molto lontana
 				 */
 				for (int i = 0; i < tupla._2().length; i++) {
 					vertice_adj = tupla._2()[i];
@@ -306,7 +311,7 @@ public class Advertisement {
 				.set("spark.driver.cores", numeroCore).set("spark.driver.memory", "4g");
 		jsc = new JavaSparkContext(conf);
 		/* Caricamento del grafo in memoria */
-		caricaGrafo("src/main/resources/grafo-" + mappaFile.get(tipologiaGrafo), true);
+		caricaGrafo("src/main/resources/grafo-" + mappaFile.get(tipologiaGrafo), false);
 		GraphOps<Long, Long> graphOps = Graph.graphToGraphOps(grafo, grafo.vertices().vdTag(),
 				grafo.vertices().vdTag());
 		long numVertici = graphOps.numVertices(); /* Numero vertici usato per la stampa dei tempi */
