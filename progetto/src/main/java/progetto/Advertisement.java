@@ -345,10 +345,10 @@ public class Advertisement {
 			 */
 			if (mappaAffinita.get(vertice) >= soglia && !inseriti.contains(vertice)) {
 				inseriti.add(vertice);
-				System.out.println("\t" + ") " + vertice + ": " + mappaAffinita.get(vertice));
-				risultato.add(risultato.value() + 1);
+				System.out.println("\t" + vertice + ": " + mappaAffinita.get(vertice));
+				risultato.add(1);
 			} else {
-				System.out.println("\t" + ") " + vertice + ": Soglia non superata!");
+				System.out.println("\t" + vertice + ": Soglia non superata!");
 			}
 			/* Controllo se l'affinità dei suoi vicini è maggiore della soglia */
 			List<Long> vicini = mappaVicini.get(vertice);
@@ -359,7 +359,7 @@ public class Advertisement {
 				if (mappaAffinita.get(vicino) >= soglia && !inseriti.contains(vicino)) {
 					inseriti.add(vicino);
 					System.out.println("\t\t" + vicino + ": " + mappaAffinita.get(vicino));
-					risultato.add(risultato.value() + 1);
+					risultato.add(1);
 				}
 			}
 
