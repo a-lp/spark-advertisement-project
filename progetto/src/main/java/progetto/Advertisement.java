@@ -3,7 +3,6 @@ package progetto;
 import java.io.FileWriter;
 import java.io.IOException;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.HashMap;
@@ -22,13 +21,12 @@ import org.apache.spark.SparkConf;
 import org.apache.spark.api.java.JavaPairRDD;
 import org.apache.spark.api.java.JavaRDD;
 import org.apache.spark.api.java.JavaSparkContext;
-import org.apache.spark.api.java.function.VoidFunction;
+import org.apache.spark.broadcast.Broadcast;
 import org.apache.spark.graphx.Edge;
 import org.apache.spark.graphx.EdgeDirection;
 import org.apache.spark.graphx.EdgeRDD;
 import org.apache.spark.graphx.Graph;
 import org.apache.spark.graphx.GraphOps;
-import org.apache.spark.graphx.VertexRDD;
 import org.apache.spark.storage.StorageLevel;
 
 import com.google.common.util.concurrent.AtomicDouble;
@@ -49,10 +47,9 @@ public class Advertisement {
 	public static FileWriter fw;
 	/* Strutture di supporto */
 	public static Graph<Long, Long> grafo;
-	public static GraphOps<Long, Long> graphOps;
 	public static List<Integer> vertici_archi = new ArrayList<Integer>(); /* 0: Numero vertici, 1: Numero archi */
 	public static Map<Long, Double> mappaAffinita = new HashMap<Long, Double>();
-	public static Map<Long, Long[]> mappaVicini;
+	public static Map<Long, ArrayList<Long>> mappaVicini = new HashMap<Long, ArrayList<Long>>();
 	public static JavaPairRDD<Long, Double> mappaUtilita;
 	public static Map<Integer, String> mappaFile = new HashMap<Integer, String>();
 	public static List<Long> listaVertici = new ArrayList<Long>();
@@ -83,12 +80,27 @@ public class Advertisement {
 		 * Lettura degli archi da file.
 		 */
 		JavaRDD<String> file = jsc.textFile(path).filter(f -> !f.startsWith("#"));
-		JavaRDD<Edge<Long>> archi = file.map(f -> {
+		System.out.println("\t\t*Mappatura file");
+		JavaRDD<Tuple2<Long, Long>> mapVertici = file.map(f -> {
 			if (f != null && f.length() > 0) {
 				String[] vertici = f.split(" "); // ^([0-9]+)
-				return new Edge<Long>(Long.parseLong(vertici[0]), Long.parseLong(vertici[1]), null);
+				Long src = Long.parseLong(vertici[0]), dst = Long.parseLong(vertici[1]);
+				return new Tuple2<Long, Long>(src, dst);
 			}
 			return null;
+		});
+		Broadcast<List<Tuple2<Long, Long>>> mapVerticiBC = jsc.broadcast(mapVertici.collect());
+		System.out.println("\t\t*Creazione mappa dei vicini");
+		mapVerticiBC.value().stream().forEach(f -> {
+			if (f != null) {
+				Long src = f._1(), dst = f._2();
+				mappaVicini.computeIfAbsent(src, k -> new ArrayList<Long>()).add(dst);
+				mappaVicini.computeIfAbsent(dst, k -> new ArrayList<Long>()).add(src);
+			}
+		});
+		System.out.println("\t\t*Conversione in Edge");
+		JavaRDD<Edge<Long>> archi = mapVertici.map(f -> {
+			return new Edge<Long>(f._1(), f._2(), null);
 		});
 		ClassTag<Long> longTag = scala.reflect.ClassTag$.MODULE$.apply(Long.class);
 		EdgeRDD<Long> pairsEdgeRDD = EdgeRDD.fromEdges(archi.rdd(), longTag, longTag);
@@ -96,16 +108,10 @@ public class Advertisement {
 				StorageLevel.MEMORY_AND_DISK_SER(), longTag, longTag);
 		System.out.println("\t*Grafo caricato");
 
-		graphOps = Graph.graphToGraphOps(grafo, grafo.vertices().vdTag(), grafo.vertices().vdTag());
-
 		/*
 		 * Memorizzo i le liste di adiacenza di ogni nodo in una variabile globale
 		 * statica.
 		 */
-		System.out.println("\t*Caricamento mappa vicini.");
-		mappaVicini = graphOps.collectNeighborIds(EdgeDirection.Either()).toJavaRDD().mapToPair(s -> {
-			return new Tuple2<Long, Long[]>((Long) s._1(), ArrayUtils.toObject(s._2()));
-		}).collectAsMap();
 		if (creaAffinita) {
 			System.out.println("\t\t*Creazione Affinità");
 			creaAffinita();
@@ -184,9 +190,10 @@ public class Advertisement {
 				 * essi ripeto la procedura di inserimento su file, controllando che non siano
 				 * già stati inseriti nell'insieme di vertici già valutati.
 				 */
-				Long[] vicini = mappaVicini.get(vertice_src.get());
-				for (int i = 0; i < vicini.length; i++) {
-					vertice_adj.set(vicini[i]);
+				List<Long> vicini = mappaVicini.get(vertice_src.get());
+				int i = 0;
+				for (Long vicino : vicini) {
+					vertice_adj.set(vicino);
 					if (!inseriti.contains(vertice_adj.get())) {
 						inseriti.add(vertice_adj.get());
 						/*
@@ -194,7 +201,7 @@ public class Advertisement {
 						 * principale, sommando o sottraendo un valore casuale preso in percentuale al
 						 * minimo valore tra 0.2 o (1-valore_src), per evitare di andare oltre l'1.
 						 */
-						if (i < vicini.length * .3) {
+						if (i < vicini.size() * .3) {
 							valore_adj.set(
 									valore_src.get() + ((random.nextBoolean() ? 1 : -1) * random.nextDouble() * 0.2));
 						} else {
@@ -202,6 +209,7 @@ public class Advertisement {
 						}
 						fw.write(vertice_adj.get() + " " + valore_adj.get() + "\n");
 					}
+					i++;
 				}
 			});
 			fw.close();
@@ -227,14 +235,14 @@ public class Advertisement {
 			/*
 			 * Per ogni vertice adiacente al nodo, sommo i rispettivi valori di affinita.
 			 */
-			Long[] vicinato = mappaVicini.get((Long) f._1());
-			for (int i = 0; i < vicinato.length; i++)
-				p += mappaAffinita.get(vicinato[i]);
+			List<Long> vicinato = mappaVicini.get((Long) f._1());
+			for (Long vicino : vicinato)
+				p += mappaAffinita.get(vicino);
 			/*
 			 * Restituisco la coppia contenente l'id del vertice e la centralità calcolata
 			 * come p^2/(#nodi_adiacenti)^2.
 			 */
-			return new Tuple2<Long, Double>((Long) f._1(), (p * p) / (vicinato.length * vicinato.length));
+			return new Tuple2<Long, Double>((Long) f._1(), (p * p) / (vicinato.size() * vicinato.size()));
 		});
 		/*
 		 * Restituisco la struttura dati contenente le coppie dei nodi con i valori di
@@ -342,14 +350,14 @@ public class Advertisement {
 				System.out.println("\t" + i + ") " + vertice + ": Soglia non superata!");
 			}
 			/* Controllo se l'affinità dei suoi vicini è maggiore della soglia */
-			Long[] vicini = mappaVicini.get(vertice);
-			for (int j = 0; j < vicini.length; j++) {
+			List<Long> vicini = mappaVicini.get(vertice);
+			for (Long vicino : vicini) {
 				/*
 				 * Stampo e conto solamente gli elementi la cui affinità supera la soglia
 				 */
-				if (mappaAffinita.get(vicini[j]) >= soglia && !inseriti.contains(vicini[j])) {
-					inseriti.add(vicini[j]);
-					System.out.println("\t\t" + vicini[j] + ": " + mappaAffinita.get(vicini[j]));
+				if (mappaAffinita.get(vicino) >= soglia && !inseriti.contains(vicino)) {
+					inseriti.add(vicino);
+					System.out.println("\t\t" + vicino + ": " + mappaAffinita.get(vicino));
 					risultato++;
 				}
 			}
@@ -394,26 +402,10 @@ public class Advertisement {
 		System.out.println("************************************");
 		System.out.println("Primi " + k + " rispetto a Casualità");
 		previousTime = System.currentTimeMillis();
-		grafo.vertices().toJavaRDD().foreach(new VoidFunction<Tuple2<Object, Long>>() {
 
-			@Override
-			public void call(Tuple2<Object, Long> t) throws Exception {
-				if (listaVertici.size() < k && new Random().nextBoolean())
-					listaVertici.add((Long) t._1());
-			}
+		grafo.vertices().toJavaRDD().takeSample(false, k).forEach(e -> {
+			listaVertici.add((Long) e._1());
 		});
-//		Set<Long> insieme = new HashSet<Long>();
-//		int i = 1;
-//		System.out.println("\t*Caricamento casuale dei vertici");
-//		while (insieme.size() < k) {
-//			long tmp = random.nextLong() % (vertici_archi.get(0)); // graphOps.pickRandomVertex();
-//			tmp = tmp > 0 ? tmp : -tmp;
-//			if (!insieme.contains(tmp)) {
-//				insieme.add(tmp);
-//				risultato.add(tmp);
-//			}
-//		}
-		System.out.println(listaVertici);
 		casuale = contaNodi(listaVertici);
 		elapsedTime = (System.currentTimeMillis() - previousTime) / 1000.0;
 		System.out.println("Tempo di esecuzione :" + elapsedTime);
@@ -482,7 +474,8 @@ public class Advertisement {
 		mappaFile.put(4, "piccolo.txt");
 		System.setProperty("hadoop.home.dir", "C:\\Hadoop");
 		SparkConf conf = new SparkConf().setAppName("Advertisement").setMaster("local[*]")
-				.set("spark.driver.cores", numeroCore).set("spark.driver.memory", "4g");
+				.set("spark.driver.cores", numeroCore).set("spark.driver.memory", "4g")
+				.set("spark.storage.memoryFraction", "0.2");
 		jsc = new JavaSparkContext(conf);
 		jsc.setLogLevel("ERROR");
 		System.out.println("****************** Fine Configurazione ******************");
