@@ -382,7 +382,7 @@ public class Advertisement {
 		/****************** Esecuzione Utilità ******************/
 		System.out.println("Primi " + k + " rispetto ad Utilità");
 		previousTime = System.currentTimeMillis();
-		topElementi = MiglioriUtilita((k <= (vertici_archi.get(0)) ? k : vertici_archi.get(0)));
+		topElementi = MiglioriUtilita(k);
 		topElementi.stream().forEach(e -> listaVertici.add(e._1()));
 		utilita = contaNodi(listaVertici);
 		elapsedTime = (System.currentTimeMillis() - previousTime) / 1000.0;
@@ -392,7 +392,7 @@ public class Advertisement {
 		System.out.println("************************************");
 		System.out.println("Primi " + k + " rispetto ad Affinità");
 		previousTime = System.currentTimeMillis();
-		topElementi = ordinaPerValore(mappaAffinita).subList(0, (k > mappaAffinita.size() ? mappaAffinita.size() : k));
+		topElementi = ordinaPerValore(mappaAffinita).subList(0, k);
 		topElementi.stream().forEach(e -> listaVertici.add(e._1()));
 		affinita = contaNodi(listaVertici);
 		elapsedTime = (System.currentTimeMillis() - previousTime) / 1000.0;
@@ -478,7 +478,7 @@ public class Advertisement {
 		mappaFile.put(4, "piccolo.txt");
 		System.setProperty("hadoop.home.dir", "C:\\Hadoop");
 		SparkConf conf = new SparkConf().setAppName("Advertisement").setMaster("local[*]")
-				.set("spark.driver.cores", numeroCore).set("spark.driver.memory", "4g")
+				.set("spark.driver.cores", "1").set("spark.driver.memory", "4g")
 				.set("spark.storage.memoryFraction", "0.2");
 		jsc = new JavaSparkContext(conf);
 		jsc.setLogLevel("ERROR");
