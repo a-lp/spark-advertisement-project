@@ -3,6 +3,7 @@ package progetto;
 import java.io.FileWriter;
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.HashMap;
@@ -16,17 +17,15 @@ import java.util.Scanner;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicLong;
 
-import org.apache.commons.lang.ArrayUtils;
+import org.apache.spark.Accumulator;
 import org.apache.spark.SparkConf;
 import org.apache.spark.api.java.JavaPairRDD;
 import org.apache.spark.api.java.JavaRDD;
 import org.apache.spark.api.java.JavaSparkContext;
 import org.apache.spark.broadcast.Broadcast;
 import org.apache.spark.graphx.Edge;
-import org.apache.spark.graphx.EdgeDirection;
 import org.apache.spark.graphx.EdgeRDD;
 import org.apache.spark.graphx.Graph;
-import org.apache.spark.graphx.GraphOps;
 import org.apache.spark.storage.StorageLevel;
 
 import com.google.common.util.concurrent.AtomicDouble;
@@ -48,9 +47,8 @@ public class Advertisement {
 	/* Strutture di supporto */
 	public static Graph<Long, Long> grafo;
 	public static List<Integer> vertici_archi = new ArrayList<Integer>(); /* 0: Numero vertici, 1: Numero archi */
-	public static Map<Long, Double> mappaAffinita = new HashMap<Long, Double>();
-	public static Map<Long, ArrayList<Long>> mappaVicini = new HashMap<Long, ArrayList<Long>>();
-	public static JavaPairRDD<Long, Double> mappaUtilita;
+	public static Double[] mappaAffinita;
+	public static List<Long>[] mappaVicini;
 	public static Map<Integer, String> mappaFile = new HashMap<Integer, String>();
 	public static List<Long> listaVertici = new ArrayList<Long>();
 
@@ -76,6 +74,11 @@ public class Advertisement {
 		JavaRDD<String> header = jsc.textFile(path).filter(f -> f.startsWith("#"));
 		header.collect().stream().forEach(e -> vertici_archi.add(Integer.parseInt(e.replace("#", ""))));
 		k = Math.min(k, vertici_archi.get(0));
+		mappaVicini = (ArrayList<Long>[]) new ArrayList[vertici_archi.get(0) + 1];
+		mappaAffinita = new Double[vertici_archi.get(0) + 1];
+		for (int i = 0; i < vertici_archi.get(0); i++) {
+			mappaVicini[i] = new ArrayList<Long>();
+		}
 		/*
 		 * Lettura degli archi da file.
 		 */
@@ -94,8 +97,8 @@ public class Advertisement {
 		mapVerticiBC.value().stream().forEach(f -> {
 			if (f != null) {
 				Long src = f._1(), dst = f._2();
-				mappaVicini.computeIfAbsent(src, k -> new ArrayList<Long>()).add(dst);
-				mappaVicini.computeIfAbsent(dst, k -> new ArrayList<Long>()).add(src);
+				mappaVicini[src.intValue()].add(dst);
+				mappaVicini[dst.intValue()].add(src);
 			}
 		});
 		System.out.println("\t\t*Conversione in Edge");
@@ -123,12 +126,11 @@ public class Advertisement {
 		 */
 		System.out.println("\t*Caricamento mappa affinità.");
 		JavaRDD<String> affinitaTesto = jsc.textFile("src/main/resources/affinita-" + mappaFile.get(tipologiaGrafo));
-		mappaAffinita = affinitaTesto.mapToPair(s -> {
+		affinitaTesto.foreach(s -> {
 			Long id_vertex = Long.parseLong(s.split(" ")[0]); /* Chiave */
 			Double value = Double.parseDouble(s.split(" ")[1]); /* Valore */
-
-			return new Tuple2<Long, Double>(id_vertex, value);
-		}).collectAsMap();
+			mappaAffinita[id_vertex.intValue()] = value;
+		});
 		System.out.println("****************** Fine Caricamento Grafo ******************");
 	}
 
@@ -190,7 +192,7 @@ public class Advertisement {
 				 * essi ripeto la procedura di inserimento su file, controllando che non siano
 				 * già stati inseriti nell'insieme di vertici già valutati.
 				 */
-				List<Long> vicini = mappaVicini.get(vertice_src.get());
+				List<Long> vicini = mappaVicini[(int) vertice_src.get()];
 				int i = 0;
 				for (Long vicino : vicini) {
 					vertice_adj.set(vicino);
@@ -235,9 +237,9 @@ public class Advertisement {
 			/*
 			 * Per ogni vertice adiacente al nodo, sommo i rispettivi valori di affinita.
 			 */
-			List<Long> vicinato = mappaVicini.get((Long) f._1());
+			List<Long> vicinato = mappaVicini[((Long) f._1()).intValue()];
 			for (Long vicino : vicinato)
-				p += mappaAffinita.get(vicino);
+				p += mappaAffinita[vicino.intValue()];
 			/*
 			 * Restituisco la coppia contenente l'id del vertice e la centralità calcolata
 			 * come p^2/(#nodi_adiacenti)^2.
@@ -264,7 +266,7 @@ public class Advertisement {
 		System.out.println("\t*Inizio calcolo Utilità");
 		JavaPairRDD<Long, Double> centralita = calcolaCentralita();
 		return centralita.mapToPair(f -> {
-			Double value = alpha * mappaAffinita.get((Long) f._1()) + (1 - alpha) * f._2();
+			Double value = alpha * mappaAffinita[((Long) f._1()).intValue()] + (1 - alpha) * f._2();
 			return new Tuple2<Long, Double>((Long) f._1(), value);
 		});
 	}
@@ -295,27 +297,20 @@ public class Advertisement {
 	 * @param hm HashMap da ordinare
 	 * @return Mappa ordinata e convertita in List
 	 */
-	public static List<Tuple2<Long, Double>> ordinaPerValore(Map<Long, Double> hm) {
-		System.out.println("\t*Ordinamento dei vertici per affinità");
-		// Create a list from elements of HashMap
-		List<Map.Entry<Long, Double>> list = new LinkedList<Map.Entry<Long, Double>>(hm.entrySet());
-
-		// Sort the list
-		Collections.sort(list, new Comparator<Map.Entry<Long, Double>>() {
-			public int compare(Map.Entry<Long, Double> o1, Map.Entry<Long, Double> o2) {
-				return -(o1.getValue()).compareTo(o2.getValue());
-			}
-		});
-
-		// put data from sorted list to hashmap
-		HashMap<Long, Double> temp = new LinkedHashMap<Long, Double>();
-		for (Map.Entry<Long, Double> aa : list) {
-			temp.put(aa.getKey(), aa.getValue());
+	static int[] indexesOfTopElements(Double[] orig, int nummax) {
+		Double[] copy = Arrays.copyOf(orig, orig.length);
+		Arrays.sort(copy);
+		Double[] honey = Arrays.copyOfRange(copy, copy.length - nummax, copy.length);
+		int[] result = new int[nummax];
+		int resultPos = 0;
+		for (int i = 0; i < orig.length; i++) {
+			Double onTrial = orig[i];
+			int index = Arrays.binarySearch(honey, onTrial);
+			if (index < 0)
+				continue;
+			result[resultPos++] = i;
 		}
-		List<Tuple2<Long, Double>> risultato = new ArrayList<Tuple2<Long, Double>>();
-		temp.entrySet()
-				.forEach(element -> risultato.add(new Tuple2<Long, Double>(element.getKey(), element.getValue())));
-		return risultato;
+		return result;
 	}
 
 	/**
@@ -332,38 +327,38 @@ public class Advertisement {
 		 * Memorizza in hash le liste di adiacenze
 		 */
 		System.out.println("\t\t*Caricamento dei vicini per i vertici in lista");
-		long i = 1, risultato = 0;
+		Accumulator<Integer> risultato = jsc.accumulator(0);
 		/*
 		 * Scorro tutti gli elementi della lista passata a parametro
 		 */
 		System.out.println("\t\t*Scorrimento nodi");
-		for (Long vertice : verticiDaVisitare) {
+		jsc.parallelize(verticiDaVisitare).foreach(vertice -> {
 			/*
 			 * Se l'elemento supera la soglia, lo conto e stampo, il valore di affinità
 			 * altrimenti stampo un messaggio di notifica.
 			 */
-			if (mappaAffinita.get(vertice) >= soglia && !inseriti.contains(vertice)) {
+			if (mappaAffinita[vertice.intValue()] >= soglia && !inseriti.contains(vertice)) {
 				inseriti.add(vertice);
-				System.out.println("\t" + i + ") " + vertice + ": " + mappaAffinita.get(vertice));
-				risultato++;
+				System.out.println("\t" + vertice + ": " + mappaAffinita[vertice.intValue()]);
+				risultato.add(risultato.localValue() + 1);
 			} else {
-				System.out.println("\t" + i + ") " + vertice + ": Soglia non superata!");
+				System.out.println("\t" + vertice + ": Soglia non superata!");
 			}
 			/* Controllo se l'affinità dei suoi vicini è maggiore della soglia */
-			List<Long> vicini = mappaVicini.get(vertice);
+			List<Long> vicini = mappaVicini[vertice.intValue()];
 			for (Long vicino : vicini) {
 				/*
 				 * Stampo e conto solamente gli elementi la cui affinità supera la soglia
 				 */
-				if (mappaAffinita.get(vicino) >= soglia && !inseriti.contains(vicino)) {
+				if (mappaAffinita[vertice.intValue()] >= soglia && !inseriti.contains(vicino)) {
 					inseriti.add(vicino);
-					System.out.println("\t\t" + vicino + ": " + mappaAffinita.get(vicino));
-					risultato++;
+					System.out.println("\t\t" + vicino + ": " + mappaAffinita[vertice.intValue()]);
+					risultato.add(risultato.localValue() + 1);
+					;
 				}
 			}
-			i++;
-		}
-		return risultato;
+		});
+		return risultato.value();
 	}
 
 	public static void main(String[] args) {
@@ -374,11 +369,14 @@ public class Advertisement {
 		/* Configurazione di Spark e dei file */
 		configuraParametri();
 		/* Caricamento del grafo in memoria */
+		previousTime = System.currentTimeMillis();
 		caricaGrafo("src/main/resources/grafo-" + mappaFile.get(tipologiaGrafo), creaNuoveAffinita);
+		elapsedTime = (System.currentTimeMillis() - previousTime) / 1000.0;
+		System.out.println("Tempo di esecuzione :" + elapsedTime);
 		/****************** Esecuzione Utilità ******************/
 		System.out.println("Primi " + k + " rispetto ad Utilità");
 		previousTime = System.currentTimeMillis();
-		topElementi = KMigliori((k <= (vertici_archi.get(0)) ? k : vertici_archi.get(0)));
+		topElementi = KMigliori(k);
 		topElementi.stream().forEach(e -> listaVertici.add(e._1()));
 		utilita = contaNodi(listaVertici);
 		elapsedTime = (System.currentTimeMillis() - previousTime) / 1000.0;
@@ -388,7 +386,10 @@ public class Advertisement {
 		System.out.println("************************************");
 		System.out.println("Primi " + k + " rispetto ad Affinità");
 		previousTime = System.currentTimeMillis();
-		topElementi = ordinaPerValore(mappaAffinita).subList(0, (k > mappaAffinita.size() ? mappaAffinita.size() : k));
+		int[] indiciElementi = indexesOfTopElements(mappaAffinita, k);
+		for (int j = 0; j < indiciElementi.length; j++) {
+			listaVertici.add((long) indiciElementi[j]);
+		}
 		topElementi.stream().forEach(e -> listaVertici.add(e._1()));
 		affinita = contaNodi(listaVertici);
 		elapsedTime = (System.currentTimeMillis() - previousTime) / 1000.0;
