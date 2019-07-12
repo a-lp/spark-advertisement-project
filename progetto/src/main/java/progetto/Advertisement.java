@@ -17,6 +17,7 @@ import java.util.Set;
 import java.util.concurrent.atomic.AtomicLong;
 
 import org.apache.commons.lang.ArrayUtils;
+import org.apache.spark.Accumulator;
 import org.apache.spark.SparkConf;
 import org.apache.spark.api.java.JavaPairRDD;
 import org.apache.spark.api.java.JavaRDD;
@@ -278,7 +279,7 @@ public class Advertisement {
 	 * @return Lista di coppie (Vertice, Valore) ordinata e con lunghezza minore o
 	 *         uguale a k.
 	 */
-	public static List<Tuple2<Long, Double>> KMigliori(int k) {
+	public static List<Tuple2<Long, Double>> MiglioriUtilita(int k) {
 		JavaPairRDD<Long, Double> risultato = calcolaUtilita(.5);
 		System.out.println("\t*Ordinamento dei risultati");
 		JavaPairRDD<Double, Long> risultatoSwaped = risultato.mapToPair(x -> x.swap());
@@ -332,22 +333,22 @@ public class Advertisement {
 		 * Memorizza in hash le liste di adiacenze
 		 */
 		System.out.println("\t\t*Caricamento dei vicini per i vertici in lista");
-		long i = 1, risultato = 0;
+		Accumulator<Integer> risultato = jsc.accumulator(0);
 		/*
 		 * Scorro tutti gli elementi della lista passata a parametro
 		 */
 		System.out.println("\t\t*Scorrimento nodi");
-		for (Long vertice : verticiDaVisitare) {
+		jsc.parallelize(verticiDaVisitare).foreach(vertice -> {
 			/*
 			 * Se l'elemento supera la soglia, lo conto e stampo, il valore di affinità
 			 * altrimenti stampo un messaggio di notifica.
 			 */
 			if (mappaAffinita.get(vertice) >= soglia && !inseriti.contains(vertice)) {
 				inseriti.add(vertice);
-				System.out.println("\t" + i + ") " + vertice + ": " + mappaAffinita.get(vertice));
-				risultato++;
+				System.out.println("\t" + ") " + vertice + ": " + mappaAffinita.get(vertice));
+				risultato.add(risultato.value() + 1);
 			} else {
-				System.out.println("\t" + i + ") " + vertice + ": Soglia non superata!");
+				System.out.println("\t" + ") " + vertice + ": Soglia non superata!");
 			}
 			/* Controllo se l'affinità dei suoi vicini è maggiore della soglia */
 			List<Long> vicini = mappaVicini.get(vertice);
@@ -358,12 +359,12 @@ public class Advertisement {
 				if (mappaAffinita.get(vicino) >= soglia && !inseriti.contains(vicino)) {
 					inseriti.add(vicino);
 					System.out.println("\t\t" + vicino + ": " + mappaAffinita.get(vicino));
-					risultato++;
+					risultato.add(risultato.value() + 1);
 				}
 			}
-			i++;
-		}
-		return risultato;
+
+		});
+		return risultato.value();
 	}
 
 	public static void main(String[] args) {
@@ -381,7 +382,7 @@ public class Advertisement {
 		/****************** Esecuzione Utilità ******************/
 		System.out.println("Primi " + k + " rispetto ad Utilità");
 		previousTime = System.currentTimeMillis();
-		topElementi = KMigliori((k <= (vertici_archi.get(0)) ? k : vertici_archi.get(0)));
+		topElementi = MiglioriUtilita((k <= (vertici_archi.get(0)) ? k : vertici_archi.get(0)));
 		topElementi.stream().forEach(e -> listaVertici.add(e._1()));
 		utilita = contaNodi(listaVertici);
 		elapsedTime = (System.currentTimeMillis() - previousTime) / 1000.0;
