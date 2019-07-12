@@ -374,7 +374,10 @@ public class Advertisement {
 		/* Configurazione di Spark e dei file */
 		configuraParametri();
 		/* Caricamento del grafo in memoria */
+		previousTime = System.currentTimeMillis();
 		caricaGrafo("src/main/resources/grafo-" + mappaFile.get(tipologiaGrafo), creaNuoveAffinita);
+		elapsedTime = (System.currentTimeMillis() - previousTime) / 1000.0;
+		System.out.println("Tempo di esecuzione :" + elapsedTime);
 		/****************** Esecuzione Utilità ******************/
 		System.out.println("Primi " + k + " rispetto ad Utilità");
 		previousTime = System.currentTimeMillis();
