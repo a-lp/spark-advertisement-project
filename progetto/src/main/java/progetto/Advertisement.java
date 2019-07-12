@@ -312,7 +312,7 @@ public class Advertisement {
 		 * Scorro tutti gli elementi della lista passata a parametro
 		 */
 		System.out.println("\t\t*Scorrimento nodi");
-		jsc.parallelize(risultato2).foreach(vertice -> {
+		risultato2.forEach(vertice -> {
 			/*
 			 * Se l'elemento supera la soglia, lo conto e stampo, il valore di affinità
 			 * altrimenti stampo un messaggio di notifica.
@@ -371,7 +371,7 @@ public class Advertisement {
 		previousTime = System.currentTimeMillis();
 		System.out.println("\t*Ordinamento vertici");
 		daContare = mappaAffinita.collect();
-		daContare.sort((Comparator<? super Tuple3<Long, Double, long[]>>) MyTupleComparator.INSTANCE);
+		daContare.sort(MyTupleComparator.INSTANCELONG);
 		System.out.println("\t*Ordinamento completato, estrazione dei primi " + k);
 		daContare = daContare.subList(0, k);
 		affinita = contaNodi(daContare);
@@ -465,7 +465,7 @@ public class Advertisement {
 
 class MyTupleComparator implements Comparator<Tuple3<Long, Double, ?>>, Serializable {
 	final static Comparator<? super Tuple3<Long, Double, Double>> INSTANCE = new MyTupleComparator();
-
+	final static Comparator<? super Tuple3<Long, Double, long[]>> INSTANCELONG = new MyTupleComparator();
 // note that the comparison is performed on the key's frequency
 // assuming that the second field of Tuple2 is a count or frequency
 	public int compare(Tuple2<Long, Double> t1, Tuple2<Long, Double> t2) {
