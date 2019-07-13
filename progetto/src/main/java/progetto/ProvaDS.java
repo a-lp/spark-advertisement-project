@@ -118,7 +118,7 @@ public class ProvaDS {
 				long[] vicini = new long[iteratore.size()];
 				int i = 0;
 				while (iteratore.hasNext()) {
-					vicini[i] = iteratore.next();
+					vicini[i] = (long) iteratore.next();
 					i++;
 				}
 
