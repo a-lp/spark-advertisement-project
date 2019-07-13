@@ -60,6 +60,7 @@ public class ProvaDS {
 		sqlc = new org.apache.spark.sql.SQLContext(jsc);
 		jsc.setLogLevel("ERROR");
 		/* Creazione grafo */
+		long previousTime = System.currentTimeMillis();
 		System.out.println("Caricamento archi da file");
 		List<String> header = jsc.textFile("src/main/resources/grafo-" + mappaFile.get(tipologiaGrafo))
 				.filter(f -> f.startsWith("#")).collect();
@@ -174,6 +175,8 @@ public class ProvaDS {
 		stampaRisultati(contaAffinita);
 		System.out.println("Nodi per casualità: " + contaCasuale.size());
 		stampaRisultati(contaCasuale);
+		double elapsedTime = (System.currentTimeMillis() - previousTime) / 1000.0;
+		System.out.println("Tempo di esecuzione :" + elapsedTime);
 	}
 
 	private static void stampaRisultati(List<Row> rows) {
