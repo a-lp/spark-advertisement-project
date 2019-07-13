@@ -3,37 +3,29 @@ package progetto;
 import java.io.FileWriter;
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.Iterator;
 import java.util.List;
 import java.util.stream.Collectors;
 
-import org.apache.parquet.filter2.predicate.Operators.Column;
+import org.apache.commons.math3.geometry.spherical.twod.Vertex;
 import org.apache.spark.SparkConf;
 import org.apache.spark.api.java.JavaRDD;
 import org.apache.spark.api.java.JavaSparkContext;
 import org.apache.spark.api.java.function.Function;
-import org.apache.spark.api.java.function.VoidFunction;
 import org.apache.spark.graphx.Edge;
 import org.apache.spark.graphx.EdgeDirection;
 import org.apache.spark.graphx.EdgeRDD;
 import org.apache.spark.graphx.Graph;
 import org.apache.spark.graphx.GraphOps;
-import org.apache.spark.graphx.VertexRDD;
 import org.apache.spark.sql.DataFrame;
-import org.apache.spark.sql.Dataset;
+import org.apache.spark.sql.Encoder;
+import org.apache.spark.sql.Encoders;
 import org.apache.spark.sql.Row;
-import org.apache.spark.sql.RowFactory;
 import org.apache.spark.sql.SQLContext;
-import org.apache.spark.sql.types.DataType;
-import org.apache.spark.sql.types.StructField;
-import org.apache.spark.sql.types.StructType;
 import org.apache.spark.storage.StorageLevel;
 
 import scala.Tuple2;
-import scala.Tuple3;
 import scala.collection.mutable.WrappedArray;
 import scala.reflect.ClassTag;
-import scala.runtime.AbstractFunction1;
 
 public class ProvaDS {
 	public static JavaSparkContext jsc;
@@ -113,12 +105,14 @@ public class ProvaDS {
 				Double affinita = (Double) row.get(0);
 				Double centralita = (Double) row.get(1);
 				System.out.println(row.getAs("vicini").getClass());
-				WrappedArray<Long> viciniWrap = (WrappedArray<Long>) row.getAs("vicini");
+				//TODO: rivedere wrapper
+				WrappedArray<Long> viciniWrap = (WrappedArray<Long>) row.get(4);
 				scala.collection.Iterator<Long> iteratore = viciniWrap.iterator();
 				long[] vicini = new long[iteratore.size()];
 				int i = 0;
 				while (iteratore.hasNext()) {
-					vicini[i] = (long) iteratore.next();
+					vicini[i] = iteratore.next().longValue();
+					System.out.println(vicini[i]);
 					i++;
 				}
 
