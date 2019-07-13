@@ -5,7 +5,9 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
+import org.apache.commons.lang.ArrayUtils;
 import org.apache.spark.SparkConf;
 import org.apache.spark.api.java.JavaRDD;
 import org.apache.spark.api.java.JavaSparkContext;
@@ -44,7 +46,8 @@ public class ProvaDS {
 				.collect();
 		Integer numVertici = Integer.parseInt(header.get(0).replace("#", ""));
 		Integer numArchi = Integer.parseInt(header.get(1).replace("#", ""));
-		JavaRDD<String> file = jsc.textFile("src/main/resources/grafo-piccolo.txt").filter(f -> !f.startsWith("#"));
+		JavaRDD<String> file = jsc.textFile("src/main/resources/grafo-piccolo.txt")
+				.filter(f -> !f.startsWith("#"));
 		JavaRDD<Edge<Long>> archi = file.map(f -> {
 			if (f != null && f.length() > 0) {
 				String[] vertici = f.split(" "); // ^([0-9]+)
@@ -139,19 +142,25 @@ public class ProvaDS {
 		casualeDS.show(k);
 		Double soglia = 0.7;
 		/* Conta nodi */
-		System.out.println("\t\t*Avvio conteggio su utilità");
-		List<Long> contaUtilita = contaNodi(utilitaDS, k, soglia);
-		System.out.println("\t\t*Avvio conteggio su affinità");
-		List<Long> contaAffinita = contaNodi(affinitaDS, k, soglia);
-		System.out.println("\t\t*Avvio conteggio su casualità");
-		List<Long> contaCasuale = contaNodi(casualeDS, k, soglia);
+		System.out.println("Avvio conteggio su utilità");
+		List<Row> contaUtilita = contaNodiRDD(utilitaDS, k, soglia);
+		System.out.println("Avvio conteggio su affinità");
+		List<Row> contaAffinita = contaNodiRDD(affinitaDS, k, soglia);
+		System.out.println("Avvio conteggio su casualità");
+		List<Row> contaCasuale = contaNodiRDD(casualeDS, k, soglia);
 		System.out.println("****************** RISULTATI ******************");
 		System.out.println("Nodi per utilità: " + contaUtilita.size());
-		System.out.println(contaUtilita);
+		stampaRisultati(contaUtilita);
 		System.out.println("Nodi per affinità: " + contaAffinita.size());
-		System.out.println(contaAffinita);
+		stampaRisultati(contaAffinita);
 		System.out.println("Nodi per casualità: " + contaCasuale.size());
-		System.out.println(contaCasuale);
+		stampaRisultati(contaCasuale);
+	}
+
+	private static void stampaRisultati(List<Row> rows) {
+		for (Row r : rows) {
+			System.out.println(r.get(2) + ": " + r.get(0));
+		}
 	}
 
 	private static List<Long> contaNodi(DataFrame dataframe, int k, Double soglia) {
@@ -159,7 +168,7 @@ public class ProvaDS {
 		List<Long> risultato = new ArrayList<Long>();
 		/* Prendo i primi k e conto quanti superano la soglia */
 		Row[] rows = dataframe.take(k);
-		Arrays.stream(rows).forEach(e -> System.out.print(" "+e.getLong(2)));
+		Arrays.stream(rows).forEach(e -> System.out.print(" " + e.getLong(2)));
 		for (Row row : rows) {
 			Long id = (Long) row.get(2);
 			Double affinita = (Double) row.get(0);
@@ -170,7 +179,7 @@ public class ProvaDS {
 			/* Controllo i vicini di primo livello */
 			Row[] vicini = dataframe.select("affinita", "id")
 					.where(dataframe.col("id").isin(viciniLst.parallelStream().toArray(Long[]::new))).collect();
-			Arrays.stream(vicini).forEach(e -> System.out.println(" *"+e.get(2)));
+			Arrays.stream(vicini).forEach(e -> System.out.println(" *" + e.get(2)));
 			for (Row vicino : vicini) {
 				Long id_vicino = (Long) row.get(2);
 				System.out.println("\t" + id_vicino);
@@ -183,35 +192,30 @@ public class ProvaDS {
 		return risultato;
 
 	}
-	
-	private static List<Long> contaNodiRDD(DataFrame dataframe, int k, Double soglia) {
-//		jsc.setLogLevel("INFO");
-		List<Long> risultato = new ArrayList<Long>();
+
+	private static List<Row> contaNodiRDD(DataFrame dataframe, int k, Double soglia) {
+		jsc.setLogLevel("INFO");
 		/* Prendo i primi k e conto quanti superano la soglia */
-		Row[] rows = dataframe.take(k);
-		Arrays.stream(rows).forEach(e -> System.out.print(" "+e.getLong(2)));
-		for (Row row : rows) {
-			Long id = (Long) row.get(2);
-			Double affinita = (Double) row.get(0);
-			List<Long> viciniLst = row.getList(4);
-			if (affinita >= soglia) {
-				risultato.add(id);
-			}
-			/* Controllo i vicini di primo livello */
-			Row[] vicini = dataframe.select("affinita", "id")
-					.where(dataframe.col("id").isin(viciniLst.parallelStream().toArray(Long[]::new))).collect();
-			Arrays.stream(vicini).forEach(e -> System.out.println(" *"+e.get(2)));
-			for (Row vicino : vicini) {
-				Long id_vicino = (Long) row.get(2);
-				System.out.println("\t" + id_vicino);
-				Double affinita_vicino = (Double) row.get(0);
-				if (affinita_vicino >= soglia) {
-					risultato.add(id_vicino);
-				}
-			}
-		}
-		return risultato;
-
+		List<Row> rows = dataframe.takeAsList(k);
+		JavaRDD<Row> rowsRDD = jsc.parallelize(rows);
+//		Broadcast<DataFrame> df = jsc.broadcast(dataframe);
+		System.out.println("\t*Mapping dei nodi");
+		System.out.println("\t\t*Rimozione valori nulli e minori alla soglia");
+		JavaRDD<Row> risultatoVertexRDD = rowsRDD.filter(row -> {
+			return row != null && (Double) row.get(0) >= soglia;
+		});
+		JavaRDD<Long> nodiRDD = risultatoVertexRDD.map(row -> {
+			return (Long) row.get(2);
+		});
+		JavaRDD<Long> viciniRDD = risultatoVertexRDD.flatMap(row -> {
+			return row.getList(4);
+		});
+		JavaRDD<Long> completoRDD = nodiRDD.union(viciniRDD);
+		List<Long> completoLst = completoRDD.collect();
+		DataFrame completoDF = dataframe
+				.filter(dataframe.col("id").isin(completoLst.parallelStream().toArray(Long[]::new)));
+		List<Row> risultatoDF = completoDF.filter(dataframe.col("affinita").geq(soglia)).takeAsList(k);
+		return risultatoDF;
 	}
-	
+
 }

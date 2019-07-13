@@ -453,6 +453,7 @@ public class Advertisement {
 		mappaFile.put(2, "grande.txt");
 		mappaFile.put(3, "medio.txt");
 		mappaFile.put(4, "piccolo.txt");
+		mappaFile.put(5, "molto-piccolo.txt");
 		System.setProperty("hadoop.home.dir", "C:\\Hadoop");
 		SparkConf conf = new SparkConf().setAppName("Advertisement").setMaster("local[*]")
 				.set("spark.driver.cores", "4").set("spark.driver.memory", "4g")
@@ -466,6 +467,7 @@ public class Advertisement {
 class MyTupleComparator implements Comparator<Tuple3<Long, Double, ?>>, Serializable {
 	final static Comparator<? super Tuple3<Long, Double, Double>> INSTANCE = new MyTupleComparator();
 	final static Comparator<? super Tuple3<Long, Double, long[]>> INSTANCELONG = new MyTupleComparator();
+
 // note that the comparison is performed on the key's frequency
 // assuming that the second field of Tuple2 is a count or frequency
 	public int compare(Tuple2<Long, Double> t1, Tuple2<Long, Double> t2) {
