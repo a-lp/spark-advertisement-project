@@ -2,13 +2,16 @@ package progetto;
 
 import java.io.FileWriter;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Iterator;
 import java.util.List;
+import java.util.stream.Collectors;
 
 import org.apache.parquet.filter2.predicate.Operators.Column;
 import org.apache.spark.SparkConf;
 import org.apache.spark.api.java.JavaRDD;
 import org.apache.spark.api.java.JavaSparkContext;
+import org.apache.spark.api.java.function.Function;
 import org.apache.spark.api.java.function.VoidFunction;
 import org.apache.spark.graphx.Edge;
 import org.apache.spark.graphx.EdgeDirection;
@@ -75,28 +78,45 @@ public class ProvaDS {
 		/* Creazione dataset */
 		DataFrame verticiDS = sqlc.createDataFrame(verticiRDD, Vertice.class);
 		verticiDS.registerTempTable("Vertici");
-		verticiDS.show();
-		verticiDS.printSchema();
+//		verticiDS.show();
+//		verticiDS.printSchema();
 		/* Aggiunta vicini */
 		scala.collection.Iterator<Tuple2<Object, long[]>> mappaVicini = graphOps
 				.collectNeighborIds(EdgeDirection.Either()).toLocalIterator();
 		List<Vertice> verticiList = new ArrayList<Vertice>();
+		/* Calcolo Centralità */
 		while (mappaVicini.hasNext()) {
 			Tuple2<Object, long[]> t = mappaVicini.next();
-			List<Row> query = verticiDS.filter(verticiDS.col("id").isin(t._2())).collectAsList();
-			Vertice nodo = ((Vertice) verticiDS.select(verticiDS.col("affinita"))
-					.filter(verticiDS.col("id").equalTo((long) t._1())).first());
+			List<Long> listaVicini = Arrays.stream(t._2()).boxed().collect(Collectors.toList());
+			List<Row> query = verticiDS
+					.filter(verticiDS.col("id").isin(listaVicini.parallelStream().toArray(Long[]::new)))
+					.collectAsList();
+			Row nodo = verticiDS.filter(verticiDS.col("id").equalTo((long) t._1())).first();
 			Double centralita = 0d;
 			for (Row row : query) {
-				centralita += ((Vertice) row).getAffinita();
+				centralita += (Double) row.get(0);
 			}
-			verticiList.add(new Vertice(nodo.getId(), nodo.getAffinita(), centralita, null, t._2()));
+			centralita = (centralita * centralita) / (t._2().length * t._2().length);
+			verticiList.add(new Vertice((Long) nodo.get(2), (Double) nodo.get(0), centralita, null, t._2()));
 		}
 		JavaRDD<Vertice> verticiRDDUpdated = jsc.parallelize(verticiList);
 		verticiDS = sqlc.createDataFrame(verticiRDDUpdated, Vertice.class);
 		verticiDS.registerTempTable("Vertici");
 		verticiDS.show();
-		/* Calcolo Centralità */
-
+		/* Calcolo Utilità */
+		Double alfa = 0.5;
+		JavaRDD<Vertice> verticiRDDUtilita = verticiDS.toJavaRDD().map(new Function<Row, Vertice>() {
+			public Vertice call(Row row) {
+				Long id = (Long) row.get(2);
+				Double affinita = (Double) row.get(0);
+				Double centralita = (Double) row.get(1);
+				long[] vicini = (long[]) row.get(4);
+				Double utilita = alfa*affinita + (1-alfa)*centralita;
+				return new Vertice(id, affinita, centralita, utilita, vicini);
+			}
+		});
+		verticiDS = sqlc.createDataFrame(verticiRDDUtilita, Vertice.class);
+		verticiDS.registerTempTable("Vertici");
+		verticiDS.show();
 	}
 }
