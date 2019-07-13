@@ -476,6 +476,7 @@ public class Advertisement {
 		mappaFile.put(2, "grande.txt");
 		mappaFile.put(3, "medio.txt");
 		mappaFile.put(4, "piccolo.txt");
+		mappaFile.put(5, "molto-piccolo.txt");
 		System.setProperty("hadoop.home.dir", "C:\\Hadoop");
 		SparkConf conf = new SparkConf().setAppName("Advertisement").setMaster("local[*]")
 				.set("spark.driver.cores", "1").set("spark.driver.memory", "4g")
