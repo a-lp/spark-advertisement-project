@@ -84,6 +84,10 @@ public class ProvaDS {
 		System.out.println("Caricamento vicini");
 		GraphOps<Long, Long> graphOps = new GraphOps<Long, Long>(grafo, grafo.vertices().vdTag(),
 				grafo.vertices().vdTag());
+		/* Aggiunta vicini */
+		System.out.println("Inizio calcolo centralità sui nodi");
+		mappaVicini = graphOps.collectNeighborIds(EdgeDirection.Either());
+		List<Vertice> verticiAggiornati = new ArrayList<Vertice>();
 		/* Caricamento affinità */
 		if (creaNuoveAffinita) {
 			System.out.println("\t*Creazione nuove affinita");
@@ -104,11 +108,6 @@ public class ProvaDS {
 		verticiDS.registerTempTable("Vertici");
 		System.out.println("\t*Broadcast del Dataframe");
 		Broadcast<DataFrame> verticiDSB = jsc.broadcast(verticiDS);
-
-		/* Aggiunta vicini */
-		System.out.println("Inizio calcolo centralità sui nodi");
-		mappaVicini = graphOps.collectNeighborIds(EdgeDirection.Either());
-		List<Vertice> verticiAggiornati = new ArrayList<Vertice>();
 		/* Calcolo Centralità */
 		JavaRDD<Vertice> verticiRDDUpdated = mappaVicini.toJavaRDD().map(f -> {
 			Tuple2<Object, long[]> t = f;
@@ -235,12 +234,12 @@ public class ProvaDS {
 			soglia = .7;
 		}
 		input = new Scanner(System.in);
-		System.out.println("Inserire alfa (Default: 0,7)");
+		System.out.println("Inserire alfa (Default: 0,5)");
 		try {
 			soglia = input.nextDouble();
 		} catch (Exception e) {
 			System.out.println("** Valore di Default **");
-			alfa = .7;
+			alfa = .5;
 		}
 		input = new Scanner(System.in);
 		System.out.println("Inserire numero di nodi da ricercare (Default: 10)");
@@ -278,7 +277,6 @@ public class ProvaDS {
 		mappaFile.put(3, "medio.txt");
 		mappaFile.put(4, "piccolo.txt");
 		mappaFile.put(5, "molto-piccolo.txt");
-		jsc.setLogLevel("ERROR");
 		System.out.println("****************** Fine Configurazione ******************");
 	}
 
