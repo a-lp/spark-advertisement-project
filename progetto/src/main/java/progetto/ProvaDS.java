@@ -31,6 +31,7 @@ import org.apache.spark.storage.StorageLevel;
 
 import scala.Tuple2;
 import scala.Tuple3;
+import scala.collection.mutable.WrappedArray;
 import scala.reflect.ClassTag;
 import scala.runtime.AbstractFunction1;
 
@@ -103,6 +104,7 @@ public class ProvaDS {
 		verticiDS = sqlc.createDataFrame(verticiRDDUpdated, Vertice.class);
 		verticiDS.registerTempTable("Vertici");
 		verticiDS.show();
+		verticiDS.printSchema();
 		/* Calcolo Utilità */
 		Double alfa = 0.5;
 		JavaRDD<Vertice> verticiRDDUtilita = verticiDS.toJavaRDD().map(new Function<Row, Vertice>() {
@@ -110,8 +112,17 @@ public class ProvaDS {
 				Long id = (Long) row.get(2);
 				Double affinita = (Double) row.get(0);
 				Double centralita = (Double) row.get(1);
-				long[] vicini = (long[]) row.get(4);
-				Double utilita = alfa*affinita + (1-alfa)*centralita;
+				System.out.println(row.getAs("vicini").getClass());
+				WrappedArray<Long> viciniWrap = (WrappedArray<Long>) row.getAs("vicini");
+				scala.collection.Iterator<Long> iteratore = viciniWrap.iterator();
+				long[] vicini = new long[iteratore.size()];
+				int i = 0;
+				while (iteratore.hasNext()) {
+					vicini[i] = iteratore.next();
+					i++;
+				}
+
+				Double utilita = alfa * affinita + (1 - alfa) * centralita;
 				return new Vertice(id, affinita, centralita, utilita, vicini);
 			}
 		});
