@@ -383,23 +383,21 @@ public class Advertisement {
 
 	public static void main(String[] args) {
 		long affinita, utilita, casuale, previousTime;
-		double elapsedTime;
+		double elapsedTimeGrafo, elapsedTimeUtilita, elapsedTimeAffinita, elapsedTimeCasuale;
 		List<Tuple2<Long, Double>> topElementi;
 		/****************** Configurazione spark ****************/
 		configuraParametri();
 		/************ Caricamento grafo in memoria **************/
 		previousTime = System.currentTimeMillis();
 		caricaGrafo("src/main/resources/grafo-" + mappaFile.get(tipologiaGrafo));
-		elapsedTime = (System.currentTimeMillis() - previousTime) / 1000.0;
-		System.out.println("Tempo di esecuzione :" + elapsedTime);
+		elapsedTimeGrafo = (System.currentTimeMillis() - previousTime) / 1000.0;
 		/****************** Esecuzione Utilità ******************/
 		System.out.println("Primi " + k + " rispetto ad Utilità");
 		previousTime = System.currentTimeMillis();
 		topElementi = MiglioriUtilita(k);
 		topElementi.stream().forEach(e -> listaVertici.add(e._1()));
 		utilita = contaNodi(listaVertici);
-		elapsedTime = (System.currentTimeMillis() - previousTime) / 1000.0;
-		System.out.println("Tempo di esecuzione :" + elapsedTime);
+		elapsedTimeUtilita = (System.currentTimeMillis() - previousTime) / 1000.0;
 		listaVertici.clear();
 		/****************** Esecuzione Utilità ******************/
 		System.out.println("************************************");
@@ -408,8 +406,7 @@ public class Advertisement {
 		topElementi = ordinaPerValore(mappaAffinita).subList(0, k);
 		topElementi.stream().forEach(e -> listaVertici.add(e._1()));
 		affinita = contaNodi(listaVertici);
-		elapsedTime = (System.currentTimeMillis() - previousTime) / 1000.0;
-		System.out.println("Tempo di esecuzione :" + elapsedTime);
+		elapsedTimeAffinita = (System.currentTimeMillis() - previousTime) / 1000.0;
 		listaVertici.clear();
 		/****************** Esecuzione Casuale ******************/
 		/*
@@ -424,13 +421,13 @@ public class Advertisement {
 			listaVertici.add((Long) e._1());
 		});
 		casuale = contaNodi(listaVertici);
-		elapsedTime = (System.currentTimeMillis() - previousTime) / 1000.0;
-		System.out.println("Tempo di esecuzione :" + elapsedTime);
+		elapsedTimeCasuale = (System.currentTimeMillis() - previousTime) / 1000.0;
 		System.out.println("************************************");
 		/****************** Risultato finale ******************/
-		System.out.println("Nodi trovati per affinità: " + affinita);
-		System.out.println("Nodi trovati per utilità: " + utilita);
-		System.out.println("Nodi trovati per lista casuale: " + casuale);
+		System.out.println("Caricamento grafo: " + elapsedTimeGrafo + "s");
+		System.out.println("Nodi trovati per affinità: " + affinita + ", " + elapsedTimeAffinita + "s");
+		System.out.println("Nodi trovati per utilità: " + utilita + ", " + elapsedTimeUtilita + "s");
+		System.out.println("Nodi trovati per lista casuale: " + casuale + ", " + elapsedTimeCasuale + "s");
 		jsc.close();
 	}
 
