@@ -35,7 +35,7 @@ import com.google.common.util.concurrent.AtomicDouble;
 import scala.Tuple2;
 import scala.reflect.ClassTag;
 
-public class VersioneHalfRDD {
+public class Advertisement {
 	/* Parametri di configurazione */
 	public static String numeroCore; /* Numero di core per l'esecuzione */
 	public static Integer tipologiaGrafo; /* Dimensione del grafo */

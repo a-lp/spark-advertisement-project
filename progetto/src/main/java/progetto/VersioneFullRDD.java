@@ -1,4 +1,4 @@
-package completo;
+package progetto;
 
 import java.io.FileWriter;
 import java.io.IOException;
@@ -14,6 +14,7 @@ import java.util.Set;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.stream.Collectors;
 
+import org.apache.commons.lang.ArrayUtils;
 import org.apache.spark.SparkConf;
 import org.apache.spark.api.java.JavaRDD;
 import org.apache.spark.api.java.JavaSparkContext;
@@ -32,6 +33,7 @@ import org.apache.spark.storage.StorageLevel;
 
 import com.google.common.util.concurrent.AtomicDouble;
 
+import completo.Vertice;
 import scala.Tuple2;
 import scala.reflect.ClassTag;
 
@@ -121,15 +123,19 @@ public class VersioneFullRDD {
 		/* Calcolo Centralità */
 		JavaRDD<Vertice> verticiRDDUpdated = mappaVicini.toJavaRDD().map(f -> {
 			Tuple2<Object, long[]> t = f;
-			List<Long> listaVicini = Arrays.stream(t._2()).boxed().collect(Collectors.toList());
+			Long[] listaVicini = ArrayUtils.toObject(t._2());
 			Double centralita = 0d;
 			Row nodo = verticiDSB.getValue().filter(verticiDSB.getValue().col("id").equalTo((long) t._1())).first();
-			if (listaVicini.size() > 0) {
-				List<Row> query = verticiDSB.getValue()
-						.filter(verticiDSB.getValue().col("id").isin(listaVicini.parallelStream().toArray(Long[]::new)))
+			if (listaVicini.length > 0) {
+				List<Row> query = verticiDSB.getValue().filter(verticiDSB.getValue().col("id").isin(listaVicini))
 						.collectAsList();
+				Set<Long> inseriti = new HashSet<Long>();
 				for (Row row : query) {
-					centralita += (Double) row.get(0);
+					long id_vicino = row.getLong(2);
+					if (!inseriti.contains(id_vicino)) {
+						centralita += (Double) row.get(0);
+						inseriti.add(id_vicino);
+					}
 				}
 				centralita = (centralita * centralita) / (t._2().length * t._2().length);
 			}
