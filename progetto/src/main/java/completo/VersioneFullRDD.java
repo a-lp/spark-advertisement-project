@@ -67,6 +67,7 @@ public class VersioneFullRDD {
 				.filter(f -> f.startsWith("#")).collect();
 		Integer numVertici = Integer.parseInt(header.get(0).replace("#", "")); /* Numero di vertici */
 		Integer numArchi = Integer.parseInt(header.get(1).replace("#", "")); /* Numero di archi */
+		k = Math.min(k, numVertici);
 		/* Lettura degli archi da file */
 		JavaRDD<String> file = jsc.textFile("src/main/resources/grafo-" + mappaFile.get(tipologiaGrafo))
 				.filter(f -> !f.startsWith("#"));
@@ -313,6 +314,16 @@ public class VersioneFullRDD {
 		System.out.println("****************** Fine Configurazione ******************");
 	}
 
+	/**
+	 * Funzione per la generazione di valori di affinità per ognuno degli n vertici
+	 * nel grafo. Nell'attribuzione di questi valori, si tiene conto dei nodi
+	 * adiacenti.
+	 * 
+	 * I dati vengono memorizzati nel file
+	 * src/main/resources/affinita-{tipologia}.txt nel formato "ID_Vertice Valore".
+	 * L'esecuzione della funzione sovrascrive il file.
+	 * 
+	 */
 	public static void creaAffinita() {
 		jsc.setLogLevel("INFO");
 		Random random = new Random();
@@ -354,8 +365,8 @@ public class VersioneFullRDD {
 							valore_adj.set(
 									valore_src.get() + ((random.nextBoolean() ? 1 : -1) * random.nextDouble() * 0.2));
 						} else {
-							/* Se il valore è negativo, lo faccio tornare positivo */
 							valore_adj.set(valore_src.get() + (-1 * random.nextDouble() * (valore_src.get() * .7)));
+							/* Se il valore è negativo, lo faccio tornare positivo */
 							if (valore_adj.get() < 0)
 								valore_adj.set(-1 * valore_adj.get());
 						}
