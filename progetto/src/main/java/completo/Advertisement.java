@@ -474,12 +474,12 @@ public class Advertisement {
 			alfa = .5;
 		}
 		input = new Scanner(System.in);
-		System.out.println("Inserire numero di nodi da ricercare (Default: 10)");
+		System.out.println("Inserire numero di nodi da ricercare (Default: 50)");
 		try {
 			k = input.nextInt();
 		} catch (Exception e) {
 			System.out.println("** Valore di Default **");
-			k = 10;
+			k = 50;
 		}
 		input = new Scanner(System.in);
 		System.out.println("Inserire numero di core (1|4) (Default: 4)");
@@ -512,7 +512,7 @@ public class Advertisement {
 		System.out.println("****************** Fine Configurazione ******************");
 		System.setProperty("hadoop.home.dir", "C:\\Hadoop");
 		SparkConf conf = new SparkConf().setAppName("Advertisement").setMaster("local[*]")
-				.set("spark.driver.cores", "1").set("spark.driver.memory", "4g")
+				.set("spark.driver.cores", numeroCore).set("spark.driver.memory", "6g")
 				.set("spark.storage.memoryFraction", "0.2");
 		jsc = new JavaSparkContext(conf);
 		jsc.setLogLevel("ERROR");

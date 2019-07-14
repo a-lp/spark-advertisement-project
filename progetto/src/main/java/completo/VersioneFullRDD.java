@@ -1,4 +1,4 @@
-package progetto;
+package completo;
 
 import java.io.FileWriter;
 import java.io.IOException;
@@ -33,7 +33,6 @@ import org.apache.spark.storage.StorageLevel;
 
 import com.google.common.util.concurrent.AtomicDouble;
 
-import completo.Vertice;
 import scala.Tuple2;
 import scala.reflect.ClassTag;
 
