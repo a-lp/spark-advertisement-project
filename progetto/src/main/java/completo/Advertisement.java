@@ -286,7 +286,7 @@ public class Advertisement {
 	 * @return Lista di coppie (Vertice, Valore) ordinata e con lunghezza minore o
 	 *         uguale a k.
 	 */
-	public static List<Tuple2<Long, Double>> MiglioriUtilita(int k) {
+	public static List<Tuple2<Long, Double>> miglioreUtilita(int k) {
 		JavaPairRDD<Long, Double> risultato = calcolaUtilita();
 		System.out.println("\t*Ordinamento dei risultati");
 		JavaPairRDD<Double, Long> risultatoSwaped = risultato.mapToPair(x -> x.swap());
@@ -394,7 +394,7 @@ public class Advertisement {
 		/****************** Esecuzione Utilità ******************/
 		System.out.println("Primi " + k + " rispetto ad Utilità");
 		previousTime = System.currentTimeMillis();
-		topElementi = MiglioriUtilita(k);
+		topElementi = miglioreUtilita(k);
 		topElementi.stream().forEach(e -> listaVertici.add(e._1()));
 		utilita = contaNodi(listaVertici);
 		elapsedTimeUtilita = (System.currentTimeMillis() - previousTime) / 1000.0;
