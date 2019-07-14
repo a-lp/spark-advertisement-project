@@ -62,21 +62,23 @@ public class VersioneFullRDD {
 		/* Creazione grafo */
 		long previousTime = System.currentTimeMillis();
 		System.out.println("Caricamento archi da file");
+		/* Lettura dei parametri del grafo dal file */
 		List<String> header = jsc.textFile("src/main/resources/grafo-" + mappaFile.get(tipologiaGrafo))
 				.filter(f -> f.startsWith("#")).collect();
-		Integer numVertici = Integer.parseInt(header.get(0).replace("#", ""));
-		Integer numArchi = Integer.parseInt(header.get(1).replace("#", ""));
+		Integer numVertici = Integer.parseInt(header.get(0).replace("#", "")); /* Numero di vertici */
+		Integer numArchi = Integer.parseInt(header.get(1).replace("#", "")); /* Numero di archi */
+		/* Lettura degli archi da file */
 		JavaRDD<String> file = jsc.textFile("src/main/resources/grafo-" + mappaFile.get(tipologiaGrafo))
 				.filter(f -> !f.startsWith("#"));
 		JavaRDD<Edge<Long>> archi = file.map(f -> {
 			if (f != null && f.length() > 0) {
-				String[] vertici = f.split(" "); // ^([0-9]+)
+				String[] vertici = f.split(" ");
 				Long src = Long.parseLong(vertici[0]), dst = Long.parseLong(vertici[1]);
 				return new Edge<Long>(src, dst, null);
 			}
 			return null;
 		});
-		/* Caricamento grafo */
+		/* Caricamento grafo e vicini */
 		System.out.println("Caricamento grafo");
 		ClassTag<Long> longTag = scala.reflect.ClassTag$.MODULE$.apply(Long.class);
 		EdgeRDD<Long> pairsEdgeRDD = EdgeRDD.fromEdges(archi.rdd(), longTag, longTag);
@@ -88,27 +90,33 @@ public class VersioneFullRDD {
 		/* Aggiunta vicini */
 		System.out.println("Inizio calcolo centralità sui nodi");
 		mappaVicini = graphOps.collectNeighborIds(EdgeDirection.Either());
-		List<Vertice> verticiAggiornati = new ArrayList<Vertice>();
 		/* Caricamento affinità */
 		if (creaNuoveAffinita) {
 			System.out.println("\t*Creazione nuove affinita");
 			creaAffinita();
 		}
 		System.out.println("Caricamento affinita da file");
+		/* Lettura dei valori di affinità da file */
 		JavaRDD<String> affinitaTesto = jsc.textFile("src/main/resources/affinita-" + mappaFile.get(tipologiaGrafo));
+		/* Creazione di oggetti di tipo Vertice da memorizzare su dataframe */
 		JavaRDD<Vertice> verticiRDD = affinitaTesto.map(s -> {
-			Long id_vertex = Long.parseLong(s.split(" ")[0]); /* Chiave */
-			Double value = Double.parseDouble(s.split(" ")[1]); /* Valore */
+			Long id_vertex = Long.parseLong(s.split(" ")[0]); /* Id vertice */
+			Double value = Double.parseDouble(s.split(" ")[1]); /* Valore affinità */
 			return new Vertice(id_vertex, value, null, null, null);
 		});
 
-		/* Creazione dataset */
+		/*
+		 * Creazione dataframe a partire dagli oggetti Vertice memorizzati in precedenza
+		 */
 		System.out.println("Creazione DataFrame iniziale");
 		DataFrame verticiDS = sqlc.createDataFrame(verticiRDD, Vertice.class);
 		verticiDS.show();
 		verticiDS.registerTempTable("Vertici");
 		System.out.println("\t*Broadcast del Dataframe");
-		Broadcast<DataFrame> verticiDSB = jsc.broadcast(verticiDS);
+		Broadcast<DataFrame> verticiDSB = jsc.broadcast(verticiDS); /*
+																	 * Variabile di broadcast, permette l'utilizzo del
+																	 * dataframe all'interno di un map
+																	 */
 		/* Calcolo Centralità */
 		JavaRDD<Vertice> verticiRDDUpdated = mappaVicini.toJavaRDD().map(f -> {
 			Tuple2<Object, long[]> t = f;
@@ -149,15 +157,15 @@ public class VersioneFullRDD {
 		verticiDS.registerTempTable("Vertici");
 		verticiDS.show();
 		System.out.println("Calcolo dei nodi che superano la soglia");
-		/* Ordinato per utilità */
+		/* Creazione dataframe ordinato per utilità */
 		System.out.println("\t*Identificazione dei primi " + k + " nodi ordinati per utilità");
 		DataFrame utilitaDS = verticiDS.sort(verticiDS.col("utilita").desc());
 		utilitaDS.show(k);
-		/* Ordinato per affinità */
+		/* Creazione dataframe ordinato per affinità */
 		System.out.println("\t*Identificazione dei primi " + k + " nodi ordinati per affinità");
 		DataFrame affinitaDS = verticiDS.sort(verticiDS.col("affinita").desc());
 		affinitaDS.show(k);
-		/* Ordinato casualmente */
+		/* Creazione dataframe ordinato casualmente */
 		System.out.println("\t*Identificazione dei primi " + k + " nodi scelti casualmente");
 		DataFrame casualeDS = verticiDS.sample(false, 1.0 * k / numVertici);
 		casualeDS.show(k);
@@ -179,14 +187,28 @@ public class VersioneFullRDD {
 		System.out.println("Tempo di esecuzione :" + elapsedTime);
 	}
 
+	/**
+	 * Funzione di utilità per la stampa delle righe ottenute da contaNodi.
+	 * 
+	 * @param rows Lista di righe da stampare.
+	 */
 	private static void stampaRisultati(List<Row> rows) {
 		for (Row r : rows) {
 			System.out.println("\t" + r.get(2) + ": " + r.get(0));
 		}
 	}
 
+	/**
+	 * Funzione per la conta dei nodi che la cui affinità supera la soglia.
+	 * 
+	 * @param dataframe Dataframe contenente i k nodi su cui controllare il valore
+	 *                  di affinità
+	 * @param k         Numero di nodi da controllare
+	 * @param soglia    Valore da superare
+	 * @return Lista contenente le righe del dataframe rappresentanti i nodi che
+	 *         superano la soglia
+	 */
 	private static List<Row> contaNodiRDD(DataFrame dataframe, int k, Double soglia) {
-//		jsc.setLogLevel("INFO");
 		/* Prendo i primi k e conto quanti superano la soglia */
 		List<Row> rows = dataframe.takeAsList(k);
 		JavaRDD<Row> rowsRDD = jsc.parallelize(rows);
@@ -213,6 +235,14 @@ public class VersioneFullRDD {
 		return risultatoDF;
 	}
 
+	/**
+	 * Funzione per la configurazione dei parametri di esecuzione. Vengono settati:
+	 * - Tipologia del grafo su cui lavorare; - Valore di soglia affinità; - Numero
+	 * k di nodi da controllare; - Valore alfa di bilanciamento nel calcolo del
+	 * valore di utilità; - Numero di core da utilizzare per l'esecuzione del
+	 * programma; - Creazione del file affinità;
+	 * 
+	 */
 	private static void configuraParametri() {
 		System.out.println("****************** Configurazione ******************");
 		Scanner input = new Scanner(System.in);
@@ -239,7 +269,7 @@ public class VersioneFullRDD {
 		input = new Scanner(System.in);
 		System.out.println("Inserire alfa (Default: 0,5)");
 		try {
-			soglia = input.nextDouble();
+			alfa = input.nextDouble();
 		} catch (Exception e) {
 			System.out.println("** Valore di Default **");
 			alfa = .5;
@@ -316,14 +346,18 @@ public class VersioneFullRDD {
 						inseriti.add(vertice_adj.get());
 						/*
 						 * Il valore di affinità viene calcolato a partire dal valore del nodo
-						 * principale, sommando o sottraendo un valore casuale preso in percentuale al
-						 * minimo valore tra 0.2 o (1-valore_src), per evitare di andare oltre l'1.
+						 * principale. Al 30% dei vicini, verrà assegnato un valore che si avvicina a
+						 * quello del nodo sorgente, al restante verrà assegnato un valore che si
+						 * allontana dal precedente
 						 */
 						if (i < vicini.length * .3) {
 							valore_adj.set(
 									valore_src.get() + ((random.nextBoolean() ? 1 : -1) * random.nextDouble() * 0.2));
 						} else {
+							/* Se il valore è negativo, lo faccio tornare positivo */
 							valore_adj.set(valore_src.get() + (-1 * random.nextDouble() * (valore_src.get() * .7)));
+							if (valore_adj.get() < 0)
+								valore_adj.set(-1 * valore_adj.get());
 						}
 						fw.write(vertice_adj.get() + " " + valore_adj.get() + "\n");
 					}

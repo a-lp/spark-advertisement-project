@@ -195,7 +195,10 @@ public class VersioneHalfRDD {
 						if (i < vicini.size() * .3) {
 							valore_adj = valore_src + ((random.nextBoolean() ? 1 : -1) * random.nextDouble() * 0.2);
 						} else {
+							/* Se il valore è negativo, lo faccio tornare positivo */
 							valore_adj = valore_src + (-1 * random.nextDouble() * (valore_src * .7));
+							if (valore_adj < 0)
+								valore_adj = -1 * valore_adj;
 						}
 						fileText = vertice_adj + " " + valore_adj + "\n";
 						fw.write(fileText);
